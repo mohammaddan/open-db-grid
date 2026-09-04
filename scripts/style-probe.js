@@ -49,6 +49,22 @@ app.whenReady().then(async () => {
     })()`)
     .catch((e) => 'PROBE_ERR ' + e.message)
   console.log('STYLE_PROBE ' + probe)
+  // flip to light theme and re-sample (settings store would normally do this)
+  const lightProbe = await w.webContents
+    .executeJavaScript(`(() => {
+      document.documentElement.dataset.theme = 'light'
+      const root = getComputedStyle(document.documentElement)
+      const cm = document.querySelector('.cm-editor')
+      return JSON.stringify({
+        accent: root.getPropertyValue('--accent').trim(),
+        synKeyword: root.getPropertyValue('--syn-keyword').trim(),
+        bodyBg: getComputedStyle(document.body).backgroundColor,
+        statusbarBg: getComputedStyle(document.querySelector('.statusbar')).backgroundColor,
+        editorBg: cm ? getComputedStyle(cm).backgroundColor : 'missing-cm'
+      })
+    })()`)
+    .catch((e) => 'PROBE_ERR ' + e.message)
+  console.log('STYLE_PROBE_LIGHT ' + lightProbe)
   app.exit(0)
 })
 
