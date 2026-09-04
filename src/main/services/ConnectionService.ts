@@ -20,6 +20,8 @@ import type { AppData } from './AppData'
 
 export class ConnectionService {
   private sessions = new Map<string, { session: DriverSession; info: OpenConnectionInfo }>()
+  /** in-flight connects, so concurrent callers share one session instead of racing */
+  private connecting = new Map<string, Promise<OpenConnectionInfo>>()
 
   constructor(
     private readonly store: JsonStore<AppData>,
@@ -153,14 +155,29 @@ export class ConnectionService {
     const existing = this.sessions.get(id)
     if (existing) return existing.info
 
+    // dedupe concurrent connects (e.g. explorer + sidebar racing on startup)
+    const inflight = this.connecting.get(id)
+    if (inflight) return inflight
+    const pending = this.doConnect(id).finally(() => this.connecting.delete(id))
+    this.connecting.set(id, pending)
+    return pending
+  }
+
+  private async doConnect(id: string): Promise<OpenConnectionInfo> {
     const conn = this.get(id)
     if (!conn) throw new DatabaseError({ message: 'Connection not found.' })
 
     const factory = driverRegistry.forEngine(conn.driver)
-    const session = await factory.connect({
-      connection: conn,
-      secretProvider: async () => (conn.secretId ? this.credentials.get(conn.secretId) : null)
-    })
+    let session: DriverSession
+    try {
+      session = await factory.connect({
+        connection: conn,
+        secretProvider: async () => (conn.secretId ? this.credentials.get(conn.secretId) : null)
+      })
+    } catch (err) {
+      // surface real connect failures (bad host, auth, SSL) as clean DatabaseErrors
+      throw new DatabaseError(toQueryErrorInfo(err))
+    }
 
     const info: OpenConnectionInfo = {
       connectionId: conn.id,
@@ -197,6 +214,20 @@ export class ConnectionService {
       })
     }
     return entry.session
+  }
+
+  /**
+   * Returns the open session for the connection, opening it on demand when
+   * necessary. Used by explorer/browse/execute paths so the user never has to
+   * manually connect first ("select connection -> open table" stays one step).
+   */
+  async ensureSession(id: string): Promise<DriverSession> {
+    const entry = this.sessions.get(id)
+    if (entry) return entry.session
+    await this.connect(id)
+    const opened = this.sessions.get(id)
+    if (!opened) throw new DatabaseError({ message: 'Connection could not be opened.' })
+    return opened.session
   }
 
   isOpen(id: string): boolean {

@@ -27,7 +27,7 @@ export class QueryService {
   ) {}
 
   async execute(req: ExecuteRequest): Promise<ExecuteResult> {
-    const session = this.connections.getSession(req.connectionId)
+    const session = await this.connections.ensureSession(req.connectionId)
     const blocked = isReadOnlyBlocked(req.sql)
     if (blocked.blocked && session.readOnly) {
       throw new DatabaseError({ message: blocked.reason ?? 'Execution blocked on read-only connection.', sqlState: '25006' })
@@ -45,7 +45,7 @@ export class QueryService {
 
   /** Executes a script (multiple statements) sequentially, stopping on error. */
   async executeScript(req: ExecuteRequest): Promise<ExecuteResult> {
-    const session = this.connections.getSession(req.connectionId)
+    const session = await this.connections.ensureSession(req.connectionId)
     const statements = splitSqlStatements(req.sql)
     if (statements.length === 0) {
       return { kind: 'UTILITY', sql: req.sql, durationMs: 0, message: 'Nothing to execute.' }
@@ -87,7 +87,7 @@ export class QueryService {
   }
 
   async explain(req: ExplainRequest): Promise<ExplainResult> {
-    const session = this.connections.getSession(req.connectionId)
+    const session = await this.connections.ensureSession(req.connectionId)
     const stmt = splitSqlStatements(req.sql)[0]
     if (!stmt) throw new DatabaseError({ message: 'Nothing to explain.' })
     try {
@@ -97,23 +97,40 @@ export class QueryService {
     }
   }
 
+  /** Fetches the next page of an open cursor. Requires the original session —
+   * auto-opening a fresh one would lose the cursor, so fail with clear guidance. */
   async page(connectionId: string, sessionId: string, pageSize?: number): Promise<QueryPage> {
-    const s = this.connections.getSession(connectionId)
-    return s.fetchPage(sessionId, pageSize)
+    try {
+      const s = this.connections.getSession(connectionId)
+      return await s.fetchPage(sessionId, pageSize)
+    } catch (err) {
+      if (err instanceof DatabaseError && err.info.code === 'EFORGE_NOT_CONNECTED') {
+        throw new DatabaseError({
+          message: 'The connection was closed — re-run the query to load more rows.',
+          code: 'EFORGE_NOT_CONNECTED'
+        })
+      }
+      throw err
+    }
   }
 
+  /** Cancels a running query. Nothing to cancel when the connection is closed. */
   async cancel(connectionId: string, sessionId: string): Promise<CancelResult> {
+    if (!this.connections.isOpen(connectionId)) {
+      return { canceled: false, message: 'Connection is not open — nothing to cancel.' }
+    }
     const s = this.connections.getSession(connectionId)
     return s.cancel(sessionId)
   }
 
   async close(connectionId: string, sessionId: string): Promise<void> {
+    if (!this.connections.isOpen(connectionId)) return
     const s = this.connections.getSession(connectionId)
     await s.closeSession(sessionId)
   }
 
   async exportResult(req: ExportRequest): Promise<ExportResult> {
-    const s = this.connections.getSession(req.connectionId)
+    const s = await this.connections.ensureSession(req.connectionId)
     return s.exportResult(req)
   }
 
@@ -122,7 +139,7 @@ export class QueryService {
     plan: SafeEditPlan,
     edits: PendingEdit[]
   ): Promise<SaveEditsResult> {
-    const s = this.connections.getSession(connectionId)
+    const s = await this.connections.ensureSession(connectionId)
     return s.saveEdits(plan, edits)
   }
 

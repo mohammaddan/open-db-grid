@@ -17,6 +17,7 @@ interface ConnectionsState {
   expandedGroups: Set<string>
 
   init: () => Promise<void>
+  refreshOpen: () => Promise<void>
   saveConnection: (
     conn: DbConnection,
     password?: string
@@ -59,6 +60,17 @@ export const useConnectionsStore = create<ConnectionsState>((set, get) => ({
       })
     } catch {
       useUiStore.getState().pushToast('error', 'Failed to load connections.')
+    }
+  },
+
+  /** Re-syncs which connections are open — picks up auto-opens that happened
+   * in the main process (explorer/execute ensureSession) without user connect. */
+  async refreshOpen() {
+    try {
+      const open = await window.api.connections.listOpen()
+      set({ openInfo: Object.fromEntries(open.map((o) => [o.connectionId, o])) })
+    } catch {
+      /* non-fatal: badge state only */
     }
   },
 

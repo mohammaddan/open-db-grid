@@ -10,18 +10,20 @@ export class ExplorerService {
   constructor(private readonly connections: ConnectionService) {}
 
   async children(req: ExplorerChildrenRequest): Promise<ExplorerNode[]> {
-    const session = this.connections.getSession(req.connectionId)
+    // opens the connection on demand — expanding a node must never require a
+    // separate "connect" step (errors from a failed connect surface as-is)
+    const session = await this.connections.ensureSession(req.connectionId)
     const source = req.parentKey === null ? ({ kind: 'roots' } as ExploreSource) : parseKey(req.parentKey)
     return session.explore(source, req.forceRefresh ?? false)
   }
 
   async plan(connectionId: string, sql: string, resultColumnNames: string[]): Promise<SafeEditPlan> {
-    const session = this.connections.getSession(connectionId)
+    const session = await this.connections.ensureSession(connectionId)
     return session.planForSelect(sql, resultColumnNames)
   }
 
   async browse(connectionId: string, target: BrowseTarget, pageSize?: number): Promise<ExecuteResult> {
-    const session = this.connections.getSession(connectionId)
+    const session = await this.connections.ensureSession(connectionId)
     return session.browse(target, pageSize)
   }
 }

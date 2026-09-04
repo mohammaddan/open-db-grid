@@ -27,12 +27,13 @@ export function App(): JSX.Element {
     return () => disposers.forEach((d) => d())
   }, [initConnections, loadSettings])
 
-  // refresh txn states for open connections
+  // refresh txn states + open-connection badges for auto-opened connections
   useEffect(() => {
     const timer = setInterval(() => {
       for (const connId of Object.keys(useEditorStore.getState().txnState)) {
         void useEditorStore.getState().refreshTxnState(connId)
       }
+      void useConnectionsStore.getState().refreshOpen()
     }, 5000)
     return () => clearInterval(timer)
   }, [])
