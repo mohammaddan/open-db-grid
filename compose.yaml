@@ -1,0 +1,24 @@
+# Disposable PostgreSQL used by the integration test-suite and local dev.
+#   docker compose up -d && docker compose down
+# The tests also work with scripts/dev-postgres.sh (plain docker run).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dbforge-pg-test
+    environment:
+      POSTGRES_USER: dbforge
+      POSTGRES_PASSWORD: dbforge
+      POSTGRES_DB: dbforge_test
+    ports:
+      - '127.0.0.1:54329:5432'
+    volumes:
+      - dbforge_pg_test:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U dbforge -d dbforge_test']
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+volumes:
+  dbforge_pg_test:
