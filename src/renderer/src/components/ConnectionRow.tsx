@@ -65,7 +65,7 @@ export function ConnectionRow({
       )}
       <span className="dot" style={{ background: color.value }} />
       <span className="label">{connection.name}</span>
-      {connection.production && <span className="tag" style={{ background: 'rgba(229,83,75,.14)', color: '#e5534b' }}>prod</span>}
+      {connection.production && <span className="tag prod">prod</span>}
       {connection.accessMode === 'read-only' && <span className="readonly-badge">read only</span>}
       {connected && <span className="badge">●</span>}
     </div>

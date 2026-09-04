@@ -37,8 +37,9 @@ import {
   foldGutter,
   foldKeymap,
   syntaxHighlighting,
-  defaultHighlightStyle
+  HighlightStyle
 } from '@codemirror/language'
+import { tags as t } from '@lezer/highlight'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import type { EditorSelectionHandle } from '@renderer/state/editor'
 import { editorHandles } from '@renderer/state/editor'
@@ -155,7 +156,7 @@ export function SqlEditor(props: Props): JSX.Element {
       crosshairCursor(),
       highlightActiveLine(),
       highlightSelectionMatches(),
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      syntaxHighlighting(sqlHighlight),
       langComp.of(langFor(props.connectionId)),
       keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap, indentWithTab]),
       runKeymap,
@@ -164,11 +165,23 @@ export function SqlEditor(props: Props): JSX.Element {
         if (u.docChanged) onChangeRef.current(u.state.doc.toString())
       }),
       EditorView.theme({
-        '&': { fontSize: props.fontSize + 'px', height: '100%' },
-        '.cm-scroller': { fontFamily: 'var(--font-mono)', overflow: 'auto' },
-        '.cm-gutters': { background: 'transparent', borderRight: '1px solid var(--border)' },
+        '&': { fontSize: props.fontSize + 'px', height: '100%', backgroundColor: 'var(--editor-bg)', color: 'var(--fg)' },
+        '.cm-scroller': { fontFamily: 'var(--font-mono)', overflow: 'auto', lineHeight: '1.55' },
+        '.cm-content': { caretColor: 'var(--accent)' },
+        '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--accent)' },
+        '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
+          backgroundColor: 'var(--selection-bg)'
+        },
+        '.cm-gutters': {
+          backgroundColor: 'var(--editor-bg)',
+          color: 'var(--fg-dim)',
+          borderRight: '1px solid var(--border)'
+        },
         '.cm-activeLine': { background: 'var(--active-line)' },
-        '.cm-activeLineGutter': { background: 'var(--active-line)' }
+        '.cm-activeLineGutter': { background: 'var(--active-line)', color: 'var(--fg-muted)' },
+        '.cm-selectionMatch': { background: 'var(--active-bg)' },
+        '.cm-foldGutter span': { color: 'var(--fg-dim)' },
+        '.cm-foldGutter span:hover': { color: 'var(--fg)' }
       })
     ]
 
@@ -226,6 +239,22 @@ export function SqlEditor(props: Props): JSX.Element {
 function langFor(connectionId: string | null): Extension {
   return sql({ dialect: PostgreSQL, upperCaseKeywords: true })
 }
+
+/* Syntax palette driven by the theme's --syn-* tokens so the editor always
+   matches the surrounding chrome in both dark and light themes. */
+const sqlHighlight = HighlightStyle.define([
+  { tag: [t.keyword, t.controlKeyword, t.moduleKeyword, t.operatorKeyword], color: 'var(--syn-keyword)', fontWeight: '500' },
+  { tag: [t.string, t.special(t.string)], color: 'var(--syn-string)' },
+  { tag: [t.number, t.integer, t.float], color: 'var(--syn-number)' },
+  { tag: [t.bool, t.null, t.constant(t.name)], color: 'var(--syn-type)' },
+  { tag: [t.comment, t.lineComment, t.blockComment], color: 'var(--syn-comment)', fontStyle: 'italic' },
+  { tag: [t.function(t.variableName), t.function(t.propertyName)], color: 'var(--syn-function)' },
+  { tag: [t.typeName, t.className, t.standard(t.typeName)], color: 'var(--syn-type)' },
+  { tag: [t.operator, t.compareOperator, t.logicOperator, t.arithmeticOperator], color: 'var(--syn-operator)' },
+  { tag: [t.punctuation, t.separator], color: 'var(--fg-muted)' },
+  { tag: [t.variableName, t.propertyName, t.labelName], color: 'var(--fg)' },
+  { tag: t.invalid, color: 'var(--danger)', textDecoration: 'underline wavy' }
+])
 
 function transformSelected(selected: string): string {
   return selected

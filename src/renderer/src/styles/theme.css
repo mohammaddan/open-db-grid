@@ -1,58 +1,115 @@
-/* Theme variables — dark (default) and light */
+/* Theme variables — dark (default) and light.
+   Palette rules:
+   - Neutrals share one slate hue (~220°) at increasing lightness steps.
+   - Accent is a single blue family; hover/active/focus states derive from it.
+   - Semantics (danger/warning/success) are tuned per theme for contrast.
+   - Syntax colors use the same hue families (blue keywords, green strings,
+     amber literals, violet functions, teal types, dim comments) via --syn-*,
+     so the editor, grid, and chrome always read as one design. */
 
 :root,
 [data-theme='dark'] {
-  --bg: #1e1f24;
-  --bg-deep: #17181c;
-  --panel-bg: #232429;
-  --panel-bg-alt: #1b1c21;
-  --editor-bg: #1a1b20;
-  --fg: #d5d8de;
-  --fg-muted: #8b90a0;
-  --fg-dim: #5b6070;
-  --border: #31333b;
-  --border-strong: #3d4048;
-  --hover-bg: rgba(255, 255, 255, 0.06);
-  --active-bg: rgba(79, 140, 255, 0.14);
-  --active-border: rgba(79, 140, 255, 0.45);
-  --input-bg: #181920;
-  --overlay-bg: rgba(0, 0, 0, 0.45);
-  --shadow: rgba(0, 0, 0, 0.5);
+  --bg: #1d1f24;
+  --bg-deep: #16171c;
+  --panel-bg: #22242a;
+  --panel-bg-alt: #1a1c21;
+  --editor-bg: #1b1d22;
+  --fg: #d6d9e0;
+  --fg-muted: #9096a3;
+  --fg-dim: #5f6574;
+  --border: #2e3138;
+  --border-strong: #3a3e47;
+  --hover-bg: rgba(255, 255, 255, 0.055);
+  --active-bg: rgba(77, 141, 255, 0.15);
+  --active-border: rgba(77, 141, 255, 0.45);
+  --active-line: rgba(77, 141, 255, 0.07);
+  --selection-bg: rgba(77, 141, 255, 0.28);
+  --input-bg: #17181d;
+  --overlay-bg: rgba(10, 11, 14, 0.55);
+  --shadow: rgba(0, 0, 0, 0.55);
   --scrollbar-thumb: rgba(255, 255, 255, 0.14);
   --scrollbar-thumb-hover: rgba(255, 255, 255, 0.24);
-  --danger-bg: rgba(229, 83, 75, 0.15);
-  --grid-header-bg: #222329;
-  --grid-line: #292b31;
-  --null-color: #7a7f8b;
-  --tag-bg: rgba(79, 140, 255, 0.12);
+
+  /* accent + semantics (theme-tuned) */
+  --accent: #4d8dff;
+  --accent-dim: #3a72e0;
+  --danger: #ee5d52;
+  --danger-bg: rgba(238, 93, 82, 0.14);
+  --warning: #e2a336;
+  --success: #56b964;
+  --readonly: #e2a336;
+
+  /* data grid */
+  --grid-header-bg: #23252b;
+  --grid-line: #2a2d34;
+  --row-selected-bg: rgba(77, 141, 255, 0.14);
+  --row-selected-hover-bg: rgba(77, 141, 255, 0.2);
+  --null-color: #767d8c;
+
+  /* tags */
+  --tag-bg: rgba(77, 141, 255, 0.13);
   --tag-fg: #9cc0ff;
+
+  /* syntax (same hue families as the chrome) */
+  --syn-keyword: #6fb3ff;
+  --syn-string: #8bd494;
+  --syn-number: #e0aa5e;
+  --syn-comment: #6b7280;
+  --syn-function: #d2a8ff;
+  --syn-type: #5fd4c4;
+  --syn-operator: #9aa2b1;
 }
 
 [data-theme='light'] {
-  --bg: #f4f5f7;
-  --bg-deep: #edeef1;
+  --bg: #f2f3f6;
+  --bg-deep: #e9ebee;
   --panel-bg: #ffffff;
-  --panel-bg-alt: #f7f8fa;
+  --panel-bg-alt: #f6f7f9;
   --editor-bg: #ffffff;
   --fg: #24292f;
   --fg-muted: #5b6270;
   --fg-dim: #9aa1ac;
-  --border: #d9dde3;
-  --border-strong: #c3c9d1;
-  --hover-bg: rgba(0, 0, 0, 0.05);
-  --active-bg: rgba(79, 140, 255, 0.12);
-  --active-border: rgba(79, 140, 255, 0.5);
+  --border: #d8dce2;
+  --border-strong: #c2c8d1;
+  --hover-bg: rgba(9, 20, 40, 0.05);
+  --active-bg: rgba(47, 106, 224, 0.1);
+  --active-border: rgba(47, 106, 224, 0.45);
+  --active-line: rgba(47, 106, 224, 0.05);
+  --selection-bg: rgba(47, 106, 224, 0.22);
   --input-bg: #ffffff;
-  --overlay-bg: rgba(0, 0, 0, 0.3);
-  --shadow: rgba(0, 0, 0, 0.15);
-  --scrollbar-thumb: rgba(0, 0, 0, 0.2);
-  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.32);
-  --danger-bg: rgba(229, 83, 75, 0.12);
+  --overlay-bg: rgba(15, 20, 30, 0.35);
+  --shadow: rgba(20, 30, 50, 0.18);
+  --scrollbar-thumb: rgba(9, 20, 40, 0.2);
+  --scrollbar-thumb-hover: rgba(9, 20, 40, 0.32);
+
+  /* accent + semantics (theme-tuned; deeper for contrast on white) */
+  --accent: #2f6ae0;
+  --accent-dim: #2456ba;
+  --danger: #d43a33;
+  --danger-bg: rgba(212, 58, 51, 0.1);
+  --warning: #9a6700;
+  --success: #1a7f37;
+  --readonly: #9a6700;
+
+  /* data grid */
   --grid-header-bg: #eef0f3;
-  --grid-line: #e5e7ea;
-  --null-color: #9aa1ac;
-  --tag-bg: rgba(79, 140, 255, 0.1);
+  --grid-line: #e3e6ea;
+  --row-selected-bg: rgba(47, 106, 224, 0.1);
+  --row-selected-hover-bg: rgba(47, 106, 224, 0.16);
+  --null-color: #8b929e;
+
+  /* tags */
+  --tag-bg: rgba(47, 106, 224, 0.09);
   --tag-fg: #2e5fc7;
+
+  /* syntax (GitHub-light-family hues, matched to the chrome accent) */
+  --syn-keyword: #2e6ae0;
+  --syn-string: #1a7f37;
+  --syn-number: #b35900;
+  --syn-comment: #8b929e;
+  --syn-function: #8250df;
+  --syn-type: #0b8a8a;
+  --syn-operator: #57606f;
 }
 
 /* App layout */
@@ -127,7 +184,9 @@
 }
 .side-head .actions {
   display: flex;
+  align-items: center;
   gap: 2px;
+}
 /* Trees */
 .tree {
   overflow: auto;
@@ -191,14 +250,21 @@
   color: var(--tag-fg);
   white-space: nowrap;
 }
+.tag.prod {
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 .readonly-badge {
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.05em;
   padding: 1px 6px;
   border-radius: 3px;
-  background: rgba(210, 153, 34, 0.16);
-  color: var(--readonly);
+  background: var(--danger-bg);
+  color: var(--danger);
   white-space: nowrap;
   text-transform: uppercase;
 }
@@ -334,12 +400,24 @@
   --rdg-border-color: var(--grid-line);
   --rdg-background-color: var(--panel-bg);
   --rdg-header-background-color: var(--grid-header-bg);
+  --rdg-header-draggable-background-color: var(--grid-header-bg);
   --rdg-row-hover-background-color: var(--hover-bg);
+  --rdg-row-selected-background-color: var(--row-selected-bg);
+  --rdg-row-selected-hover-background-color: var(--row-selected-hover-bg);
   --rdg-selection-color: var(--accent);
   --rdg-font-size: 12px;
   font-family: var(--font-mono);
   background: var(--panel-bg);
   color: var(--fg);
+}
+.rdg .rdg-header-row {
+  color: var(--fg-muted);
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.rdg .rdg-header-row .rdg-cell {
+  border-bottom: 1px solid var(--border-strong);
 }
 .rdg .cell-null {
   color: var(--null-color);
@@ -347,7 +425,7 @@
   opacity: 0.85;
 }
 .rdg .cell-json {
-  color: #d8a657;
+  color: var(--syn-type);
 }
 .rdg .cell-edited {
   color: var(--warning);
@@ -360,7 +438,7 @@
 }
 .rdg .cell-pk {
   color: var(--fg-muted);
-  background: rgba(127, 127, 127, 0.06);
+  background: var(--hover-bg);
 }
 
 /* Toast */
@@ -586,4 +664,50 @@
 .cm-editor.cm-focused {
   outline: none;
 }
+
+/* CodeMirror chrome (autocomplete tooltips, panels) themed to match */
+.cm-tooltip {
+  background: var(--panel-bg);
+  border: 1px solid var(--border-strong) !important;
+  border-radius: 6px;
+  box-shadow: 0 6px 20px var(--shadow);
+  color: var(--fg);
+}
+.cm-tooltip.cm-tooltip-autocomplete > ul {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  max-height: 240px;
+}
+.cm-tooltip.cm-tooltip-autocomplete > ul > li {
+  color: var(--fg);
+  padding: 2px 10px;
+  border-radius: 3px;
+}
+.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background: var(--active-bg);
+  color: var(--fg);
+}
+.cm-completionIcon {
+  opacity: 0.7;
+}
+.cm-completionDetail {
+  color: var(--fg-dim);
+  font-style: normal;
+}
+.cm-completionInfo {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+}
+.cm-panels {
+  background: var(--panel-bg-alt);
+  color: var(--fg);
+  border-color: var(--border);
+}
+.cm-searchMatch {
+  background: var(--active-bg);
+  outline: 1px solid var(--active-border);
+}
+.cm-searchMatch-selected {
+  background: var(--selection-bg);
 }

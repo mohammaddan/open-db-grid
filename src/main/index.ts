@@ -24,7 +24,7 @@ async function createWindow(): Promise<void> {
     minWidth: 1024,
     minHeight: 640,
     show: false,
-    backgroundColor: '#1e1f24',
+    backgroundColor: '#1d1f24',
     title: 'DBForge',
     autoHideMenuBar: true,
     webPreferences: {
