@@ -59,6 +59,7 @@ interface CursorSession {
   fetched: number
   /** true when the cursor lives on the shared user-transaction client */
   onTxnClient: boolean
+  totalRows?: number
 }
 
 const DEFAULT_PAGE_SIZE = 500
@@ -100,7 +101,8 @@ export class PostgresDriverSession implements DriverSession {
     const host = tunnelHandle ? tunnelHandle.host : conn.config.host
     const port = tunnelHandle ? tunnelHandle.port : conn.config.port
     const ssl = buildPgSsl(conn.config.ssl)
-    const options: string[] = ['-c application_name=DBForge']
+    const appName = conn.config.applicationName || 'OpenDBGrid'
+    const options: string[] = [`-c application_name=${appName}`]
     if (this.readOnly) options.push('-c default_transaction_read_only=on')
 
     this.pool = new Pool({
@@ -169,6 +171,7 @@ export class PostgresDriverSession implements DriverSession {
         sessionId,
         columns: page.columns,
         page,
+        totalRows: page.totalRows,
         rowsAffected: 0
       }
     }
@@ -207,8 +210,10 @@ export class PostgresDriverSession implements DriverSession {
             ...(r as Record<string, unknown>)
           })),
           hasMore: false,
-          fetched: res.rows.length
+          fetched: res.rows.length,
+          totalRows: res.rows.length
         }
+        base.totalRows = res.rows.length
       }
       return base
     } catch (err) {
@@ -425,11 +430,19 @@ export class PostgresDriverSession implements DriverSession {
       }))
       session.fetched = rows.length
       const hasMore = rows.length === pageSize
+      let totalRows: number | undefined
+      if (!hasMore) {
+        totalRows = rows.length
+      } else {
+        totalRows = await this.countQueryRows(sql)
+      }
+      session.totalRows = totalRows
+
       if (!hasMore) {
         this.closedSessions.set(sessionId, { sql, columns })
         void this.closeSession(sessionId)
       }
-      return { columns, rows, hasMore, fetched: rows.length }
+      return { columns, rows, hasMore, fetched: rows.length, totalRows }
     } catch (err) {
       await this.safeReleaseAfterOpen(client)
       throw toQueryErrorInfo(err)
@@ -462,11 +475,30 @@ export class PostgresDriverSession implements DriverSession {
         this.closedSessions.set(sessionId, { sql: session.sql, columns: session.columns })
         void this.closeSession(sessionId)
       }
-      return { columns: session.columns, rows, hasMore, fetched: session.fetched }
+      return { columns: session.columns, rows, hasMore, fetched: session.fetched, totalRows: session.totalRows }
     } catch (err) {
       throw toQueryErrorInfo(err)
     } finally {
       this.inFlight.delete(sessionId)
+    }
+  }
+
+  private async countQueryRows(sql: string): Promise<number | undefined> {
+    try {
+      const cleanSql = sql.trim().replace(/;+\s*$/, '')
+      const countSql = `SELECT count(*)::text AS total FROM (${cleanSql}) AS _total_count_sub`
+      const client = await this.pool.connect()
+      try {
+        await client.query('SET statement_timeout = 3000')
+        const res = await client.query(countSql)
+        const total = Number(res.rows[0]?.total)
+        return Number.isFinite(total) ? total : undefined
+      } finally {
+        await client.query('SET statement_timeout = 0').catch(() => {})
+        client.release()
+      }
+    } catch {
+      return undefined
     }
   }
 // -------------------------------------------------------------------------

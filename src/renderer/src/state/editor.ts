@@ -50,6 +50,8 @@ let tabCounter = 0
 interface EditorState {
   tabs: EditorTab[]
   activeId: string | null
+  activeTabByConnection: Record<string, string | null>
+  switchConnection: (connectionId: string | null) => void
   txnState: Record<string, 'none' | 'open'>
 
   newQueryTab: (connectionId?: string | null, sql?: string) => string
@@ -77,27 +79,162 @@ interface EditorState {
   commitTxn: (connectionId: string) => Promise<void>
   rollbackTxn: (connectionId: string) => Promise<void>
   setTxnState: (connectionId: string, state: 'none' | 'open') => void
+  removeConnectionTabs: (connectionId: string) => void
+  reloadBrowse: (tabId: string) => Promise<void>
+}
+
+interface PersistedTab {
+  id: string
+  kind: EditorTabKind
+  title: string
+  connectionId: string | null
+  sql: string
+  dirty: boolean
+  browseTarget: BrowseTarget | null
+}
+
+const STORAGE_KEY = 'dbforge_editor_sessions_v1'
+
+function loadPersistedState(): {
+  tabs: EditorTab[]
+  activeId: string | null
+  activeTabByConnection: Record<string, string | null>
+} {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return { tabs: [], activeId: null, activeTabByConnection: {} }
+    const parsed = JSON.parse(raw) as {
+      tabs?: PersistedTab[]
+      activeId?: string | null
+      activeTabByConnection?: Record<string, string | null>
+    }
+    const tabs: EditorTab[] = (parsed.tabs ?? []).map((t) => ({
+      id: t.id,
+      kind: t.kind ?? 'query',
+      title: t.title ?? 'Query',
+      connectionId: t.connectionId ?? null,
+      sql: t.sql ?? '',
+      dirty: Boolean(t.dirty),
+      running: false,
+      result: null,
+      error: null,
+      plan: null,
+      hasMore: false,
+      pending: [],
+      browseTarget: t.browseTarget ?? null
+    }))
+    const activeTabByConnection = parsed.activeTabByConnection ?? {}
+    const activeId = parsed.activeId ?? null
+    return { tabs, activeId, activeTabByConnection }
+  } catch {
+    return { tabs: [], activeId: null, activeTabByConnection: {} }
+  }
+}
+
+function savePersistedState(
+  tabs: EditorTab[],
+  activeId: string | null,
+  activeTabByConnection: Record<string, string | null>
+): void {
+  try {
+    const persisted = {
+      tabs: tabs.map((t) => ({
+        id: t.id,
+        kind: t.kind,
+        title: t.title,
+        connectionId: t.connectionId,
+        sql: t.sql,
+        dirty: t.dirty,
+        browseTarget: t.browseTarget
+      })),
+      activeId,
+      activeTabByConnection
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted))
+  } catch {
+    // quota or serialization fallback
+  }
 }
 
 function newId(): string {
   return `${Date.now().toString(36)}-${(tabCounter++).toString(36)}`
 }
 
+const initialPersisted = loadPersistedState()
+
 export const useEditorStore = create<EditorState>((set, get) => ({
-  tabs: [],
-  activeId: null,
+  tabs: initialPersisted.tabs,
+  activeId: initialPersisted.activeId,
+  activeTabByConnection: initialPersisted.activeTabByConnection,
   txnState: {},
 
+  removeConnectionTabs(connectionId) {
+    const next = get().tabs.filter((t) => t.connectionId !== connectionId)
+    const nextActiveMap = { ...get().activeTabByConnection }
+    delete nextActiveMap[connectionId]
+    set({
+      tabs: next,
+      activeTabByConnection: nextActiveMap,
+      activeId:
+        get().activeId && next.some((t) => t.id === get().activeId)
+          ? get().activeId
+          : next[0]?.id ?? null
+    })
+  },
+
+  async reloadBrowse(tabId) {
+    const tab = get().tabs.find((t) => t.id === tabId)
+    if (!tab || !tab.connectionId || !tab.browseTarget || tab.running) return
+    set((s) => ({
+      tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, running: true, error: null } : t))
+    }))
+    try {
+      const result = await window.api.explorer.browse(tab.connectionId, tab.browseTarget, 500)
+      const plan = await fetchPlan(tab.connectionId, tab.sql, result).catch(() => null)
+      set((s) => ({
+        tabs: s.tabs.map((t) =>
+          t.id === tabId
+            ? { ...t, running: false, result, plan, hasMore: result.page?.hasMore ?? false }
+            : t
+        )
+      }))
+    } catch (err) {
+      const info = extractApiError(err)
+      set((s) => ({
+        tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, running: false, error: info } : t))
+      }))
+    }
+  },
+
+  switchConnection(connectionId) {
+    const connKey = connectionId ?? '__none__'
+    const connTabs = get().tabs.filter((t) =>
+      connectionId ? t.connectionId === connectionId : !t.connectionId
+    )
+    const rememberedId = get().activeTabByConnection[connKey]
+    const nextActive = connTabs.find((t) => t.id === rememberedId)?.id ?? connTabs[0]?.id ?? null
+    set((s) => ({
+      activeId: nextActive,
+      activeTabByConnection: { ...s.activeTabByConnection, [connKey]: nextActive }
+    }))
+  },
+
   newQueryTab(connectionId = null, sql = '') {
+    const connId =
+      connectionId !== undefined && connectionId !== null
+        ? connectionId
+        : useConnectionsStore.getState().selectedId
     const id = newId()
-    const conn = connectionId
-      ? useConnectionsStore.getState().connections.find((c) => c.id === connectionId)
+    const conn = connId
+      ? useConnectionsStore.getState().connections.find((c) => c.id === connId)
       : undefined
+    const connTabs = get().tabs.filter((t) => t.connectionId === connId && t.kind === 'query')
+    const title = conn ? `Query ${connTabs.length + 1}` : 'Query'
     const tab: EditorTab = {
       id,
       kind: 'query',
-      title: conn ? 'Query' : 'Query',
-      connectionId,
+      title,
+      connectionId: connId,
       sql,
       dirty: false,
       running: false,
@@ -108,11 +245,28 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       pending: [],
       browseTarget: null
     }
-    set((s) => ({ tabs: [...s.tabs, tab], activeId: id }))
+    const connKey = connId ?? '__none__'
+    set((s) => ({
+      tabs: [...s.tabs, tab],
+      activeId: id,
+      activeTabByConnection: { ...s.activeTabByConnection, [connKey]: id }
+    }))
     return id
   },
 
   async openBrowse(connectionId, target) {
+    const existing = get().tabs.find(
+      (t) =>
+        t.connectionId === connectionId &&
+        t.kind === 'browse' &&
+        t.browseTarget?.schema === target.schema &&
+        t.browseTarget?.table === target.table
+    )
+    if (existing) {
+      get().activate(existing.id)
+      return
+    }
+
     const id = newId()
     const tab: EditorTab = {
       id,
@@ -129,7 +283,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       pending: [],
       browseTarget: target
     }
-    set((s) => ({ tabs: [...s.tabs, tab], activeId: id }))
+    const connKey = connectionId ?? '__none__'
+    set((s) => ({
+      tabs: [...s.tabs, tab],
+      activeId: id,
+      activeTabByConnection: { ...s.activeTabByConnection, [connKey]: id }
+    }))
     try {
       const result = await window.api.explorer.browse(connectionId, target, 500)
       const plan = await fetchPlan(connectionId, tab.sql, result)
@@ -157,15 +316,36 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       void window.api.query.close(tab.connectionId, tab.result.sessionId)
     }
     const next = tabs.filter((t) => t.id !== id)
+    const connKey = tab.connectionId ?? '__none__'
+    const connTabs = next.filter((t) =>
+      tab.connectionId ? t.connectionId === tab.connectionId : !t.connectionId
+    )
+    const currentConnActive = get().activeTabByConnection[connKey]
+    let nextConnActive = currentConnActive
+    if (currentConnActive === id) {
+      const closedTabIdxInConn = tabs
+        .filter((t) => (tab.connectionId ? t.connectionId === tab.connectionId : !t.connectionId))
+        .findIndex((t) => t.id === id)
+      nextConnActive = connTabs[Math.min(closedTabIdxInConn, connTabs.length - 1)]?.id ?? null
+    }
     let activeId = get().activeId
     if (activeId === id) {
-      activeId = next[Math.min(idx, next.length - 1)]?.id ?? null
+      activeId = nextConnActive
     }
-    set({ tabs: next, activeId })
+    set((s) => ({
+      tabs: next,
+      activeId,
+      activeTabByConnection: { ...s.activeTabByConnection, [connKey]: nextConnActive }
+    }))
   },
 
   activate(id) {
-    set({ activeId: id })
+    const tab = get().tabs.find((t) => t.id === id)
+    const connKey = tab?.connectionId ?? '__none__'
+    set((s) => ({
+      activeId: id,
+      activeTabByConnection: { ...s.activeTabByConnection, [connKey]: id }
+    }))
   },
 
   setSql(id, sql, dirty = true) {
@@ -476,6 +656,10 @@ applyEdit(tabId, rowKey, column, oldValue, newValue, pkValues) {
   }
 }))
 
+useEditorStore.subscribe((state) => {
+  savePersistedState(state.tabs, state.activeId, state.activeTabByConnection)
+})
+
 // -- helpers --------------------------------------------------------------
 
 async function fetchPlan(
@@ -508,8 +692,10 @@ function appendPage(
         columns: page.columns,
         rows: combined,
         hasMore: page.hasMore,
-        fetched: result.page.fetched + page.rows.length
+        fetched: result.page.fetched + page.rows.length,
+        totalRows: page.totalRows ?? result.page.totalRows ?? result.totalRows
       }
+      result.totalRows = page.totalRows ?? result.totalRows ?? result.page.totalRows
       result.durationMs = (result.durationMs ?? 0) + (page.fetched > 0 ? 0 : 0)
     }
     return { ...t, result, hasMore: page.hasMore }

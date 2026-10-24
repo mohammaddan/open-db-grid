@@ -19,6 +19,7 @@ interface ExplorerState {
   loadChildren: (connId: string, parentKey: string, forceRefresh?: boolean) => Promise<ExplorerNode[]>
   refresh: (connId: string, parentKey?: string) => Promise<void>
   clearForConnection: (connId: string) => void
+  clearCache: (connId: string) => void
 }
 
 function cacheKey(connId: string, parentKey: string): string {
@@ -118,6 +119,24 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       expandedByConn,
       activeConnectionId:
         get().activeConnectionId === connId ? null : get().activeConnectionId
+    })
+  },
+
+  clearCache(connId) {
+    const childrenByKey = { ...get().childrenByKey }
+    const failedKeys = { ...get().failedKeys }
+    const expandedByConn = { ...get().expandedByConn }
+    for (const k of Object.keys(childrenByKey)) {
+      if (k.startsWith(connId + ':')) delete childrenByKey[k]
+    }
+    for (const k of Object.keys(failedKeys)) {
+      if (k.startsWith(connId + ':')) delete failedKeys[k]
+    }
+    delete expandedByConn[connId]
+    set({
+      childrenByKey,
+      failedKeys,
+      expandedByConn
     })
   }
 }))

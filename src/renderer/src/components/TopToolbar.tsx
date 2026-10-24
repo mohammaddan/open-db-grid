@@ -1,4 +1,4 @@
-import { Database, Play, Square, Wand2, ListPlus, Save as SaveIcon, GitBranch } from 'lucide-react'
+import { Database, Play, Square, Wand2, ListPlus, Save as SaveIcon, GitBranch, Check, X } from 'lucide-react'
 import { useEditorStore } from '@renderer/state/editor'
 import { useUiStore } from '@renderer/state/ui'
 import { useConnectionsStore } from '@renderer/state/connections'
@@ -6,59 +6,110 @@ import { formatActiveEditor, actions } from '@renderer/lib/shortcuts'
 
 export function TopToolbar(): JSX.Element {
   const activeTab = useEditorStore((s) => s.tabs.find((t) => t.id === s.activeId))
+  const txnState = useEditorStore((s) => s.txnState)
   const openPalette = useUiStore((s) => s.openPalette)
   const openConnectionDialog = useUiStore((s) => s.openConnectionDialog)
+  const requestPrompt = useUiStore((s) => s.requestPrompt)
+  const pushToast = useUiStore((s) => s.pushToast)
   const connections = useConnectionsStore((s) => s.connections)
 
   const selectedConnId = useConnectionsStore((s) => s.selectedId)
   const tabConnId = activeTab?.connectionId ?? selectedConnId
+  const isRunning = Boolean(activeTab?.running)
+  const isTxnOpen = tabConnId ? txnState[tabConnId] === 'open' : false
 
   const runExecute = () => void actions.execute.run()
   const runAll = () => void actions.executeAll.run()
   const runFormat = () => formatActiveEditor()
+  const runCancel = () => {
+    if (activeTab?.id) {
+      void useEditorStore.getState().cancelRun(activeTab.id)
+    }
+  }
 
-  const saveQuery = async (): Promise<void> => {
+  const saveQuery = (): void => {
     const tab = useEditorStore.getState().tabs.find((t) => t.id === useEditorStore.getState().activeId)
-    if (!tab || !tab.sql.trim()) return
-    const name = window.prompt('Name for this saved query', '')
-    if (!name) return
-    await window.api.saved.save({ name, sql: tab.sql, connectionId: tab.connectionId ?? undefined })
-    useUiStore.getState().pushToast('success', 'Query saved.')
+    if (!tab || !tab.sql.trim()) {
+      pushToast('info', 'Query tab is empty.')
+      return
+    }
+    requestPrompt({
+      title: 'Save Query',
+      message: 'Enter a descriptive name for this query:',
+      placeholder: 'e.g. Active Users by Region',
+      confirmLabel: 'Save Query',
+      onConfirm: async (name) => {
+        await window.api.saved.save({ name, sql: tab.sql, connectionId: tab.connectionId ?? undefined })
+        pushToast('success', `Saved query "${name}".`)
+      }
+    })
   }
 
   return (
     <div className="toolbar">
-      <div className="brand">
-        <Database size={15} />
-        DBForge
-      </div>
-
-      <button className="btn" title="New Query (Ctrl+T)" onClick={() => useEditorStore.getState().newQueryTab(tabConnId, '')}>
+      <button
+        className="btn"
+        title="New Query (Ctrl+T)"
+        onClick={() => useEditorStore.getState().newQueryTab(tabConnId, '')}
+      >
         <ListPlus size={14} /> New Query
       </button>
-      <button className="btn" title="New Connection (Ctrl+Shift+N)" onClick={() => openConnectionDialog(null)}>
+      <button
+        className="btn"
+        title="New Connection (Ctrl+Shift+N)"
+        onClick={() => openConnectionDialog(null)}
+      >
         <Database size={14} /> New Connection
       </button>
 
       <div className="sep" />
 
-      <button className="btn primary" title="Execute current statement (Ctrl+Enter)" onClick={runExecute} disabled={!tabConnId}>
-        <Play size={14} /> Execute
+      <button
+        className="btn primary cyber-btn"
+        title="Execute current statement (Ctrl+Enter)"
+        onClick={runExecute}
+        disabled={!tabConnId || isRunning}
+      >
+        <Play size={13} fill="currentColor" /> Execute <span className="kbd-badge">Ctrl+↵</span>
       </button>
-      <button className="btn" title="Execute entire script (Ctrl+Shift+Enter)" onClick={runAll} disabled={!tabConnId}>
-        <Play size={14} /> Run All
+
+      <button
+        className={'btn ' + (isRunning ? 'danger' : '')}
+        title="Stop running query"
+        onClick={runCancel}
+        disabled={!isRunning}
+      >
+        <Square size={13} fill="currentColor" /> Stop
       </button>
-      <button className="btn" title="EXPLAIN selected statement" onClick={() => void actions.explain.run()} disabled={!tabConnId}>
-        <Wand2 size={14} /> Explain
+
+      <button
+        className="btn"
+        title="Execute entire script (Ctrl+Shift+Enter)"
+        onClick={runAll}
+        disabled={!tabConnId || isRunning}
+      >
+        <Play size={13} /> Run All
       </button>
-      <button className="btn" title="Format SQL (Shift+Alt+F)" onClick={runFormat}>
-        <Wand2 size={14} /> Format
+
+      <button
+        className="btn"
+        title="EXPLAIN selected statement (Ctrl+Shift+E)"
+        onClick={() => void actions.explain.run()}
+        disabled={!tabConnId || isRunning}
+      >
+        <Wand2 size={13} /> Explain
+      </button>
+
+      <button className="btn" title="Format SQL (Ctrl+Shift+F)" onClick={runFormat}>
+        <Wand2 size={13} /> Format
       </button>
 
       <div className="sep" />
 
+      {/* Connection Selector */}
       <select
-        style={{ width: 220, background: 'var(--input-bg)', color: 'var(--fg)', border: '1px solid var(--border)', borderRadius: 4, height: 26 }}
+        className="toolbar-select"
+        style={{ width: 200 }}
         value={tabConnId ?? ''}
         onChange={(e) => {
           const id = e.target.value || null
@@ -79,18 +130,48 @@ export function TopToolbar(): JSX.Element {
         ))}
       </select>
 
-      <button className="btn" title="Save query" onClick={() => void saveQuery()}>
-        <SaveIcon size={14} /> Save
-      </button>
-      <button className="btn" title="Begin transaction" onClick={() => { if (tabConnId) void useEditorStore.getState().beginTxn(tabConnId) }}>
-        <GitBranch size={14} />
+      {/* Transaction Controls */}
+      {isTxnOpen ? (
+        <div className="txn-chip active" title="Active open transaction">
+          <span className="dot" />
+          <span>In Txn</span>
+          <button
+            className="btn icon-only"
+            style={{ width: 22, height: 20, color: 'var(--success)' }}
+            title="Commit Transaction"
+            onClick={() => { if (tabConnId) void useEditorStore.getState().commitTxn(tabConnId) }}
+          >
+            <Check size={13} />
+          </button>
+          <button
+            className="btn icon-only"
+            style={{ width: 22, height: 20, color: 'var(--danger)' }}
+            title="Rollback Transaction"
+            onClick={() => { if (tabConnId) void useEditorStore.getState().rollbackTxn(tabConnId) }}
+          >
+            <X size={13} />
+          </button>
+        </div>
+      ) : (
+        <button
+          className="btn"
+          title="Begin Transaction"
+          disabled={!tabConnId}
+          onClick={() => { if (tabConnId) void useEditorStore.getState().beginTxn(tabConnId) }}
+        >
+          <GitBranch size={13} /> Begin Txn
+        </button>
+      )}
+
+      <button className="btn" title="Save query" onClick={saveQuery}>
+        <SaveIcon size={13} /> Save
       </button>
 
       <div className="spacer" />
 
       {connections.length > 0 && (
         <button className="btn" title="Command palette (Ctrl+Shift+P)" onClick={openPalette}>
-          Palette
+          Palette <span className="kbd-badge">Ctrl+Shift+P</span>
         </button>
       )}
     </div>

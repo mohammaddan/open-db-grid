@@ -107,6 +107,13 @@ export interface RendererApi {
     /** opens a save dialog; returns chosen path or null */
     chooseExportFile: (defaultName: string) => Promise<string | null>
   }
+  window: {
+    minimize: () => Promise<void>
+    maximize: () => Promise<boolean>
+    close: () => Promise<void>
+    isMaximized: () => Promise<boolean>
+    onMaximizedChange: (callback: (isMaximized: boolean) => void) => () => void
+  }
 }
 
 export function toError(err: unknown): string {

@@ -2,7 +2,7 @@
 // Editing only ever mutates the pending-changes model — nothing is written
 // to the database until the user presses "Save changes".
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RenderCellProps, RenderEditCellProps } from 'react-data-grid'
 import type { ResultRow } from '@shared/models/result'
 
@@ -250,6 +250,8 @@ export function JsonEditor(props: RenderEditCellProps<ResultRow>): JSX.Element {
   )
 }
 
+import { Copy, Check, FileJson, X, AlignLeft } from 'lucide-react'
+
 // ---------------------------------------------------------------------------
 // Value viewer modal (JSON / long text)
 // ---------------------------------------------------------------------------
@@ -260,24 +262,133 @@ export function ValueViewerModal(props: {
   onClose: () => void
 }): JSX.Element {
   const { value, dataType, onClose } = props
-  const pretty =
-    value !== null && typeof value === 'object'
-      ? JSON.stringify(value, null, 2)
-      : value === null || value === undefined
-        ? 'NULL'
-        : String(value)
+  const [copied, setCopied] = useState(false)
+  const [formatMode, setFormatMode] = useState<'pretty' | 'compact'>('pretty')
+
+  const isJson = isJsonType(dataType) || (value !== null && typeof value === 'object')
+
+  // Parse if string containing JSON
+  const parsedJson = useMemo(() => {
+    if (value !== null && typeof value === 'object') return value
+    if (typeof value === 'string') {
+      const trimmed = value.trim()
+      if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+        try {
+          return JSON.parse(trimmed)
+        } catch {
+          return null
+        }
+      }
+    }
+    return null
+  }, [value])
+
+  const displayText = useMemo(() => {
+    if (value === null || value === undefined) return 'NULL'
+    if (parsedJson !== null) {
+      return formatMode === 'pretty'
+        ? JSON.stringify(parsedJson, null, 2)
+        : JSON.stringify(parsedJson)
+    }
+    if (typeof value === 'object') {
+      return JSON.stringify(value, null, 2)
+    }
+    return String(value)
+  }, [value, parsedJson, formatMode])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(displayText)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    } catch {
+      // fallback
+    }
+  }
+
+  const lineCount = displayText.split('\n').length
+  const charCount = displayText.length
+
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <div className="modal value-viewer" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="modal-title">
-          Value ({dataType})
-          <button className="btn" onClick={onClose}>
-            Close
+    <div className="modal-backdrop value-viewer-backdrop" onMouseDown={onClose}>
+      <div className="modal value-viewer value-viewer-modal" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="value-viewer-header">
+          <div className="value-viewer-title-group">
+            <span className="value-viewer-title">
+              {isJson ? <FileJson size={16} className="text-cyan-400" /> : <AlignLeft size={16} />}
+              <span>Cell Value</span>
+            </span>
+            <span className="value-viewer-badge">{dataType}</span>
+            {parsedJson !== null && <span className="value-viewer-badge json-badge">Valid JSON</span>}
+            <span className="value-viewer-stats">
+              {lineCount} {lineCount === 1 ? 'line' : 'lines'} · {charCount} chars
+            </span>
+          </div>
+
+          <div className="value-viewer-actions">
+            {parsedJson !== null && (
+              <button
+                type="button"
+                className="btn secondary cyber-btn"
+                style={{ height: 26, padding: '0 8px', fontSize: 11 }}
+                onClick={() => setFormatMode((m) => (m === 'pretty' ? 'compact' : 'pretty'))}
+                title={formatMode === 'pretty' ? 'Switch to Compact JSON' : 'Switch to Formatted JSON'}
+              >
+                {formatMode === 'pretty' ? 'Compact' : 'Prettify'}
+              </button>
+            )}
+
+            <button
+              type="button"
+              className="btn secondary cyber-btn"
+              style={{ height: 26, padding: '0 10px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}
+              onClick={handleCopy}
+            >
+              {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+              <span>{copied ? 'Copied' : 'Copy'}</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn icon-only"
+              style={{ width: 26, height: 26 }}
+              onClick={onClose}
+              title="Close (Esc)"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+
+        <div className="value-viewer-body">
+          <textarea
+            readOnly
+            spellCheck={false}
+            className="value-viewer-text value-viewer-textarea"
+            value={displayText}
+          />
+        </div>
+
+        <div className="value-viewer-footer">
+          <span>Read-only inspection · Press <kbd className="hint-kbd">ESC</kbd> to close</span>
+          <button type="button" className="btn cyber-btn" style={{ height: 26, padding: '0 12px' }} onClick={onClose}>
+            Done
           </button>
         </div>
-        <textarea readOnly className="value-viewer-text" value={pretty} />
       </div>
     </div>
   )
 }
+
 

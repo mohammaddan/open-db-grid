@@ -1,6 +1,10 @@
-# DBForge
+# OpenDBGrid
 
-A production-quality, cross-platform **database GUI client** — PostgreSQL first, with a driver
+<p align="center">
+  <img src="resources/icon.png" width="128" height="128" alt="OpenDBGrid Logo" />
+</p>
+
+A modern, fast, cross-platform **database GUI client & data grid** — PostgreSQL first, with a driver
 abstraction that makes adding MySQL/SQLite/SQL Server a matter of implementing one interface.
 
 Think TablePlus + DataGrip + VS Code: dense, keyboard-first, fast, and safe around production data.
@@ -166,6 +170,8 @@ compose.yaml
 npm install
 npm run dev          # dev mode (electron-vite)
 npm run build        # production bundles in out/
+npm run build:deb    # build Ubuntu/Debian .deb package in dist/
+npm run build:linux  # build .deb and .AppImage packages in dist/
 npm start            # run the built app
 npm run typecheck    # both tsconfig.node.json + tsconfig.web.json
 ```

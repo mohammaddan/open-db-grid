@@ -22,8 +22,10 @@ export interface QueryPage {
   columns: QueryColumn[]
   rows: ResultRow[]
   hasMore: boolean
-  /** total rows fetched so far (the "Rows: N" indicator is page-based) */
+  /** total rows fetched so far */
   fetched: number
+  /** total number of rows matching the query, if determined */
+  totalRows?: number
 }
 
 export interface ExecuteRequest {
@@ -54,6 +56,8 @@ export interface ExecuteResult {
   page?: QueryPage
   /** DML */
   rowsAffected?: number
+  /** Total number of rows matching the query, if determined */
+  totalRows?: number
   /** DDL / utility informational result */
   message?: string
   /** returned by script execution: results of each statement */

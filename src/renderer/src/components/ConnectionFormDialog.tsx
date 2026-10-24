@@ -117,7 +117,7 @@ function toConnection(form: FormState, existing: DbConnection | undefined): DbCo
               : {})
           }
         : undefined,
-      applicationName: 'DBForge'
+      applicationName: 'OpenDBGrid'
     },
     accessMode: form.accessMode,
     production: form.production,

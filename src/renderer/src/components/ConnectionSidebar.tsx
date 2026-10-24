@@ -1,5 +1,6 @@
 // Connection sidebar: hierarchical groups, drag & drop, search, context menus.
 // Colors, tags, production markers and read-only badges are always visible.
+// Supports both root-level (ungrouped) connections and nested group trees.
 
 import { useMemo, useState } from 'react'
 import {
@@ -15,6 +16,7 @@ import type { ConnectionGroup, DbConnection } from '@shared/models/connection'
 import { colorOf } from '@shared/models/connection'
 import { useConnectionsStore } from '@renderer/state/connections'
 import { useEditorStore } from '@renderer/state/editor'
+import { useExplorerStore } from '@renderer/state/explorer'
 import { useUiStore } from '@renderer/state/ui'
 import { GroupRow } from './GroupRow'
 import { ConnectionRow } from './ConnectionRow'
@@ -26,7 +28,12 @@ interface TreeGroup {
   connections: DbConnection[]
 }
 
-function buildTree(groups: ConnectionGroup[], connections: DbConnection[]): TreeGroup[] {
+interface ConnectionTreeData {
+  rootConnections: DbConnection[]
+  groups: TreeGroup[]
+}
+
+function buildTree(groups: ConnectionGroup[], connections: DbConnection[]): ConnectionTreeData {
   const byParent = new Map<string | null, ConnectionGroup[]>()
   for (const g of groups) {
     const list = byParent.get(g.parentId) ?? []
@@ -42,19 +49,22 @@ function buildTree(groups: ConnectionGroup[], connections: DbConnection[]): Tree
   const sortConns = (a: DbConnection, b: DbConnection): number =>
     (a.order ?? 1e9) - (b.order ?? 1e9) || a.name.localeCompare(b.name)
 
-  const build = (parentId: string | null): TreeGroup[] =>
-    (byParent.get(parentId) ?? [])
-      .sort((a, b) => a.order - b.order)
-      .map((g) => ({
-        group: g,
-        children: build(g.id),
-        connections: (connsByGroup.get(g.id) ?? []).sort(sortConns)
-      }))
-  return build(null)
+  const buildGroup = (g: ConnectionGroup): TreeGroup => ({
+    group: g,
+    children: (byParent.get(g.id) ?? []).sort((a, b) => a.order - b.order).map(buildGroup),
+    connections: (connsByGroup.get(g.id) ?? []).sort(sortConns)
+  })
+
+  const topGroups = (byParent.get(null) ?? []).sort((a, b) => a.order - b.order).map(buildGroup)
+  const rootConns = (connsByGroup.get(null) ?? []).sort(sortConns)
+
+  return {
+    rootConnections: rootConns,
+    groups: topGroups
+  }
 }
 
-/** Filtered subtree, or null when neither the node nor any descendant matches. */
-function filterTree(node: TreeGroup, f: string): TreeGroup | null {
+function filterGroup(node: TreeGroup, f: string): TreeGroup | null {
   if (f === '') return node
   const conns = node.connections.filter(
     (c) =>
@@ -64,12 +74,31 @@ function filterTree(node: TreeGroup, f: string): TreeGroup | null {
       c.tags.some((t) => t.toLowerCase().includes(f))
   )
   const kids = node.children
-    .map((ch) => filterTree(ch, f))
+    .map((ch) => filterGroup(ch, f))
     .filter((ch): ch is TreeGroup => ch !== null)
   const hit =
     node.group.name.toLowerCase().includes(f) || conns.length > 0 || kids.length > 0
   if (!hit) return null
   return { group: node.group, children: kids, connections: conns }
+}
+
+function filterTreeData(data: ConnectionTreeData, f: string): ConnectionTreeData {
+  if (f === '') return data
+  const matchConn = (c: DbConnection): boolean =>
+    c.name.toLowerCase().includes(f) ||
+    c.config.host.toLowerCase().includes(f) ||
+    c.config.database.toLowerCase().includes(f) ||
+    c.tags.some((t) => t.toLowerCase().includes(f))
+
+  const filteredRootConns = data.rootConnections.filter(matchConn)
+  const filteredGroups = data.groups
+    .map((g) => filterGroup(g, f))
+    .filter((g): g is TreeGroup => g !== null)
+
+  return {
+    rootConnections: filteredRootConns,
+    groups: filteredGroups
+  }
 }
 
 function isDescendant(groups: ConnectionGroup[], ancestorId: string, candidateId: string): boolean {
@@ -94,12 +123,11 @@ export function ConnectionSidebar(): JSX.Element {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
-  const tree = useMemo(() => buildTree(groups, connections), [groups, connections])
+  const treeData = useMemo(() => buildTree(groups, connections), [groups, connections])
   const filtered = useMemo(() => {
     const f = filter.trim().toLowerCase()
-    if (f === '') return tree
-    return tree.map((t) => filterTree(t, f)).filter((t): t is TreeGroup => t !== null)
-  }, [tree, filter])
+    return filterTreeData(treeData, f)
+  }, [treeData, filter])
 
   const isOpen = (id: string): boolean => Boolean(openInfo[id])
 
@@ -181,22 +209,38 @@ export function ConnectionSidebar(): JSX.Element {
     for (const g of groups) store.setExpanded(g.id, false)
   }
 
-  async function promptRename(g: ConnectionGroup): Promise<void> {
-    const name = window.prompt('Rename group', g.name)
-    if (name && name.trim()) await store.renameGroup(g.id, name.trim())
+  function promptRename(g: ConnectionGroup): void {
+    useUiStore.getState().requestPrompt({
+      title: 'Rename Group',
+      defaultValue: g.name,
+      confirmLabel: 'Rename',
+      onConfirm: async (name) => {
+        await store.renameGroup(g.id, name)
+      }
+    })
   }
 
-  async function promptConnRename(c: DbConnection): Promise<void> {
-    const name = window.prompt('Rename connection', c.name)
-    if (name && name.trim()) await store.renameConnection(c.id, name.trim())
+  function promptConnRename(c: DbConnection): void {
+    useUiStore.getState().requestPrompt({
+      title: 'Rename Connection',
+      defaultValue: c.name,
+      confirmLabel: 'Rename',
+      onConfirm: async (name) => {
+        await store.renameConnection(c.id, name)
+      }
+    })
   }
 
-  async function promptGroup(title: string, parentId: string | null): Promise<void> {
-    const name = window.prompt(title, '')
-    if (name && name.trim()) {
-      await store.addGroup(name.trim(), parentId)
-      if (parentId) store.setExpanded(parentId, true)
-    }
+  function promptGroup(title: string, parentId: string | null): void {
+    useUiStore.getState().requestPrompt({
+      title,
+      placeholder: 'e.g. Production Cluster',
+      confirmLabel: 'Create Group',
+      onConfirm: async (name) => {
+        await store.addGroup(name, parentId)
+        if (parentId) store.setExpanded(parentId, true)
+      }
+    })
   }
 
   /** Reparents children to the deleted group's parent, then removes it. */
@@ -207,6 +251,26 @@ export function ConnectionSidebar(): JSX.Element {
     for (const cc of childConns) await store.moveConnection(cc.id, g.parentId)
     await store.deleteGroup(g.id)
   }
+
+  const renderConnection = (conn: DbConnection, depth: number): JSX.Element => (
+    <ConnectionRow
+      key={'c:' + conn.id}
+      connection={conn}
+      depth={depth}
+      connected={isOpen(conn.id)}
+      selected={selectedId === conn.id}
+      color={colorOf(conn.color)}
+      onSelect={() => {
+        store.select(conn.id)
+        useExplorerStore.getState().setActiveConnection(conn.id)
+      }}
+      onDoubleClick={() => {
+        if (!isOpen(conn.id)) void store.connect(conn.id)
+        useExplorerStore.getState().setActiveConnection(conn.id)
+      }}
+      onContextMenu={(e) => open(e, connMenu(conn))}
+    />
+  )
 
   const renderGroup = (node: TreeGroup, depth: number): JSX.Element[] => {
     const expanded = expandedGroups.has(node.group.id)
@@ -223,63 +287,63 @@ export function ConnectionSidebar(): JSX.Element {
     if (expanded) {
       for (const child of node.children) rows.push(...renderGroup(child, depth + 1))
       for (const conn of node.connections) {
-        rows.push(
-          <ConnectionRow
-            key={'c:' + conn.id}
-            connection={conn}
-            depth={depth + 1}
-            connected={isOpen(conn.id)}
-            selected={selectedId === conn.id}
-            color={colorOf(conn.color)}
-            onSelect={() => store.select(conn.id)}
-            onDoubleClick={() => {
-              if (!isOpen(conn.id)) void store.connect(conn.id)
-            }}
-            onContextMenu={(e) => open(e, connMenu(conn))}
-          />
-        )
+        rows.push(renderConnection(conn, depth + 1))
       }
     }
     return rows
   }
 
   return (
-    <div className="sidebar">
-      <div className="sidebar-search">
-        <Search size={13} className="icon" />
+    <div className="panel" style={{ height: '100%' }}>
+      <div className="panel-header">
+        <span className="panel-title">Connections</span>
+        <div className="actions">
+          <button
+            className="btn icon-only"
+            title="New Connection (Ctrl+Shift+N)"
+            onClick={() => useUiStore.getState().openConnectionDialog(null)}
+          >
+            <Plus size={13} />
+          </button>
+        </div>
+      </div>
+      <div className="search-box">
+        <Search size={12} className="icon" />
         <input
-          placeholder="Search connections, tags…"
+          placeholder="Filter connections…"
           value={filter}
           onChange={(e) => setFilterText(e.target.value)}
         />
       </div>
-      <div className="sidebar-toolbar">
-        <button
-          className="btn ghost"
-          title="New Connection (Ctrl+Shift+N)"
-          onClick={() => useUiStore.getState().openConnectionDialog(null)}
-        >
-          <Plus size={13} /> Connection
-        </button>
-        <button
-          className="btn ghost"
-          title="New group"
-          onClick={() => void promptGroup('New group', null)}
-        >
-          <Plus size={13} /> Group
-        </button>
-      </div>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <div className="tree">
           <GroupRow
-            group={{ id: '__root__', name: 'Databases', parentId: null, collapsed: false, order: 0 }}
+            group={{ id: '__root__', name: 'All Connections', parentId: null, collapsed: false, order: 0 }}
             depth={0}
             expanded
             onToggle={() => undefined}
             onContextMenu={(e) => open(e, rootMenu())}
             root
           />
-          {filtered.map((node) => renderGroup(node, 1))}
+          {filtered.rootConnections.map((conn) => renderConnection(conn, 1))}
+          {filtered.groups.map((node) => renderGroup(node, 1))}
+          {connections.length === 0 && (
+            <div className="tree-empty" style={{ flexDirection: 'column', padding: '24px 12px' }}>
+              <span>No connections configured.</span>
+              <button
+                className="btn primary cyber-btn"
+                style={{ marginTop: 8 }}
+                onClick={() => useUiStore.getState().openConnectionDialog(null)}
+              >
+                <Plus size={13} /> New Connection
+              </button>
+            </div>
+          )}
+          {connections.length > 0 &&
+            filtered.rootConnections.length === 0 &&
+            filtered.groups.length === 0 && (
+              <div className="tree-empty">No connections matching "{filter}".</div>
+            )}
         </div>
       </DndContext>
       {menu && <ContextMenuView menu={menu} onClose={close} />}

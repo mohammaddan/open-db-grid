@@ -1,17 +1,19 @@
 // Spreadsheet-like result grid built on react-data-grid (virtualized:
 // 1M-row cursors never enter the DOM). Editing routes through the
 // pending-changes model — cells only change after "Save changes".
+// Styled according to Concept 1: Obsidian Cyber Dark.
 
 import { useMemo, useState } from 'react'
-import { DataGrid,
+import {
+  DataGrid,
   SelectColumn,
   type Column,
   type SortColumn,
   type RenderEditCellProps,
-  type CellKeyDownArgs,
   type CellMouseArgs
 } from 'react-data-grid'
 import 'react-data-grid/lib/styles.css'
+import { Check, X, Search, Download, Copy, RefreshCw } from 'lucide-react'
 import type { EditorTab } from '@renderer/state/editor'
 import type { PendingEdit, QueryColumn } from '@shared/models/explorer'
 import type { ResultRow } from '@shared/models/result'
@@ -147,17 +149,49 @@ export function ResultTable(props: Props): JSX.Element {
       const isBool = isBooleanType(qc?.dataType ?? '', qc?.typeOid)
       const isJson = isJsonType(qc?.dataType ?? '', qc?.typeOid)
       const isNum = isNumericType(qc?.dataType ?? '', qc?.typeOid)
+      const isPk = tab.plan?.pkColumns.includes(name) ?? false
+      const rawType = qc?.dataType ?? ''
+      const displayType =
+        rawType && !rawType.startsWith('oid:')
+          ? rawType
+          : isNum
+          ? 'NUMERIC'
+          : isBool
+          ? 'BOOLEAN'
+          : isJson
+          ? 'JSON'
+          : ''
+
       cols.push({
         key: name,
         name,
         width: widths[name] ?? undefined,
-        minWidth: 60,
+        minWidth: 70,
         resizable: true,
         sortable: true,
         draggable: true,
         editable,
         cellClass: (row: ResultRow): string =>
           pendingCells.has(row.__rowId + ':' + name) ? 'cell-pending' : '',
+        renderHeaderCell: () => (
+          <div className="grid-header-cell">
+            <span className="grid-header-title" title={name}>
+              {name}
+            </span>
+            <div className="grid-header-badges">
+              {isPk && (
+                <span className="badge-pk" title="Primary Key">
+                  PK
+                </span>
+              )}
+              {displayType && (
+                <span className="badge-type" title={rawType || displayType}>
+                  {displayType.slice(0, 9)}
+                </span>
+              )}
+            </div>
+          </div>
+        ),
         renderCell: (p) => <ValueCell {...p} onOpenValue={(rk, ck) => openViewer(rk, ck)} />,
         renderEditCell: (p: RenderEditCellProps<ResultRow>) =>
           wrapEditor(p, isBool, isJson, isNum)
@@ -214,7 +248,9 @@ export function ResultTable(props: Props): JSX.Element {
 
   function copyRow(): void {
     if (!lastCell) return
-    const values = orderedColumns.map((k) => (lastCell.row[k] === null ? 'NULL' : String(lastCell.row[k] ?? '')))
+    const values = orderedColumns.map((k) =>
+      lastCell.row[k] === null ? 'NULL' : String(lastCell.row[k] ?? '')
+    )
     copyText(values.join('\t'))
   }
 
@@ -223,86 +259,127 @@ export function ResultTable(props: Props): JSX.Element {
     const header = orderedColumns.join('\t')
     const lines = displayRows
       .filter((r) => selectedRows.has(r.__rowId))
-      .map((r) => orderedColumns.map((k) => (r[k] === null ? 'NULL' : String(r[k] ?? ''))).join('\t'))
+      .map((r) =>
+        orderedColumns
+          .map((k) => (r[k] === null ? 'NULL' : String(r[k] ?? '')))
+          .join('\t')
+      )
     copyText([header, ...lines].join('\n'))
   }
 
   // -- render -----------------------------------------------------------------
 
   const fetched = page?.fetched ?? 0
+  const totalRows = tab.result?.totalRows ?? page?.totalRows
   const duration = tab.result?.durationMs ?? 0
+  const rowsText =
+    totalRows !== undefined && tab.hasMore && fetched < totalRows
+      ? `${totalRows.toLocaleString()} rows (${fetched.toLocaleString()} loaded)`
+      : totalRows !== undefined
+      ? `${totalRows.toLocaleString()} rows`
+      : tab.hasMore
+      ? `${fetched.toLocaleString()}+ rows`
+      : `${fetched.toLocaleString()} rows`
+
   const kindLabel =
     tab.result?.kind === 'DML'
       ? tab.result.rowsAffected !== undefined
         ? tab.result.rowsAffected.toLocaleString() + ' rows affected'
         : 'done'
-      : fetched.toLocaleString() + ' rows'
+      : `${duration} ms • ${rowsText}`
 
   return (
     <div className="result-pane">
       <div className="result-toolbar">
         <span className={'result-status ' + (tab.error ? 'error' : 'ok')}>
-          {tab.error ? 'error' : 'completed'}
+          {tab.error ? 'Error' : 'Completed'}
         </span>
         <span className="result-meta">{kindLabel}</span>
-        <span className="result-meta">{duration} ms</span>
+
         {tab.hasMore && (
-          <button className="btn" onClick={props.onLoadMore} title="Fetch the next page from the cursor">
-            Load more…
+          <button
+            className="btn icon-only"
+            onClick={props.onLoadMore}
+            title="Fetch the next page from cursor"
+          >
+            <RefreshCw size={12} />
           </button>
         )}
         {tab.hasMore && (
-          <span className="result-meta muted">showing {fetched.toLocaleString()} of more</span>
+          <span className="result-meta muted">
+            {totalRows !== undefined
+              ? `showing ${fetched.toLocaleString()} of ${totalRows.toLocaleString()}`
+              : `showing ${fetched.toLocaleString()} of more`}
+          </span>
         )}
 
-        <input
-          className="result-search"
-          placeholder="Search results…"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+          <Search size={12} style={{ position: 'absolute', left: 7, color: 'var(--fg-dim)', pointerEvents: 'none' }} />
+          <input
+            className="result-search"
+            style={{ paddingLeft: 24 }}
+            placeholder="Search in results…"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
+        </div>
 
         <div className="spacer" />
 
         {tab.plan && !tab.plan.editable && (
           <span className="result-readonly" title={tab.plan.reason ?? ''}>
-            result read-only
+            Read-Only Result
           </span>
         )}
         {planEditable && tab.pending.length === 0 && (
-          <span className="result-editable">editable</span>
+          <span className="result-editable">Editable</span>
         )}
-        {tab.pending.length > 0 && (
-          <>
-            <span className="pending-count">
-              {tab.pending.length} pending change{tab.pending.length === 1 ? '' : 's'}
-            </span>
-            <button className="btn primary" onClick={props.onSaveEdits} title="Apply pending changes (parameterized UPDATE)">
-              Save changes
-            </button>
-            <button className="btn" onClick={props.onDiscardEdits}>Discard</button>
-          </>
+
+        <button className="btn" onClick={copyCell} disabled={!lastCell} title="Copy cell">
+          <Copy size={12} /> Cell
+        </button>
+        <button className="btn" onClick={copyRow} disabled={!lastCell} title="Copy row (TSV)">
+          <Copy size={12} /> Row
+        </button>
+        {selectedRows.size > 0 && (
+          <button className="btn" onClick={copySelectedRows} title={`Copy ${selectedRows.size} selected rows`}>
+            <Copy size={12} /> Rows ({selectedRows.size})
+          </button>
         )}
-        <button className="btn" onClick={copyCell} disabled={!lastCell} title="Copy cell">Copy cell</button>
-        <button className="btn" onClick={copyRow} disabled={!lastCell} title="Copy row (TSV)">Copy row</button>
+
+        <div className="sep" />
+
         <button
           className="btn"
-          onClick={copySelectedRows}
-          disabled={selectedRows.size === 0}
-          title={'Copy selected rows (' + selectedRows.size + ')'}
+          onClick={() => props.onExport('csv')}
+          disabled={!tab.result?.sessionId}
+          title="Export CSV"
         >
-          Copy rows
+          <Download size={12} /> CSV
         </button>
-        <button className="btn" onClick={() => props.onExport('csv')} disabled={!tab.result?.sessionId}>CSV</button>
-        <button className="btn" onClick={() => props.onExport('json')} disabled={!tab.result?.sessionId}>JSON</button>
-        <button className="btn" onClick={() => props.onExport('tsv')} disabled={!tab.result?.sessionId}>TSV</button>
+        <button
+          className="btn"
+          onClick={() => props.onExport('json')}
+          disabled={!tab.result?.sessionId}
+          title="Export JSON"
+        >
+          <Download size={12} /> JSON
+        </button>
+        <button
+          className="btn"
+          onClick={() => props.onExport('tsv')}
+          disabled={!tab.result?.sessionId}
+          title="Export TSV"
+        >
+          <Download size={12} /> TSV
+        </button>
       </div>
 
       {tab.error && <div className="result-error">{tab.error.message}</div>}
 
       {page ? (
         <DataGrid
-          className="result-grid"
+          className="result-grid rdg"
           columns={columns}
           rows={displayRows}
           rowKeyGetter={(r) => r.__rowId}
@@ -334,12 +411,36 @@ export function ResultTable(props: Props): JSX.Element {
             }
           }}
           defaultColumnOptions={{ resizable: true }}
-          rowHeight={26}
-          headerRowHeight={28}
+          rowHeight={27}
+          headerRowHeight={30}
           enableVirtualization
         />
       ) : (
-        <div className="result-empty">No results — run a query to see rows here.</div>
+        <div className="result-empty">No results — run a query to display rows here.</div>
+      )}
+
+      {/* Concept 1 Obsidian Cyber Pending Changes Dock */}
+      {tab.pending.length > 0 && (
+        <div className="pending-dock">
+          <span className="pending-count">
+            <span className="dot" style={{ background: 'var(--warning)', boxShadow: '0 0 6px var(--warning)' }} />
+            {tab.pending.length} Pending Change{tab.pending.length === 1 ? '' : 's'}
+          </span>
+          <button
+            className="btn primary cyber-btn"
+            onClick={props.onSaveEdits}
+            title="Apply pending changes (parameterized UPDATE)"
+          >
+            <Check size={13} /> Save Changes
+          </button>
+          <button className="btn" onClick={props.onDiscardEdits} title="Discard all pending changes">
+            <X size={13} /> Discard
+          </button>
+          <div className="spacer" />
+          <span className="result-meta muted">
+            {duration} ms • {rowsText}
+          </span>
+        </div>
       )}
 
       {viewer && (

@@ -37,5 +37,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 }))
 
 export function applyTheme(theme: ThemeName): void {
-  document.documentElement.dataset.theme = theme
+  const norm = theme === 'dark' ? 'cyber-dark' : theme
+  document.documentElement.dataset.theme = norm
 }

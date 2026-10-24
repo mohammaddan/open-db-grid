@@ -16,11 +16,21 @@ export interface ConfirmRequest {
   onConfirm: () => void
 }
 
+export interface PromptRequest {
+  title: string
+  message?: string
+  defaultValue?: string
+  placeholder?: string
+  confirmLabel?: string
+  onConfirm: (value: string) => void
+}
+
 interface UiState {
   paletteOpen: boolean
   historyOpen: boolean
   savedOpen: boolean
   confirm: ConfirmRequest | null
+  prompt: PromptRequest | null
   toasts: Toast[]
   connectionDialog: { connectionId: string | null } | null
 
@@ -34,6 +44,8 @@ interface UiState {
   closeSaved: () => void
   requestConfirm: (req: ConfirmRequest) => void
   dismissConfirm: () => void
+  requestPrompt: (req: PromptRequest) => void
+  dismissPrompt: () => void
   pushToast: (kind: Toast['kind'], text: string) => void
   dismissToast: (id: number) => void
   openConnectionDialog: (connectionId: string | null) => void
@@ -45,6 +57,7 @@ export const useUiStore = create<UiState>((set) => ({
   historyOpen: false,
   savedOpen: false,
   confirm: null,
+  prompt: null,
   toasts: [],
   connectionDialog: null,
 
@@ -58,6 +71,8 @@ export const useUiStore = create<UiState>((set) => ({
   closeSaved: () => set({ savedOpen: false }),
   requestConfirm: (req) => set({ confirm: req }),
   dismissConfirm: () => set({ confirm: null }),
+  requestPrompt: (req) => set({ prompt: req }),
+  dismissPrompt: () => set({ prompt: null }),
   pushToast: (kind, text) => {
     const id = Date.now() + Math.random()
     set((s) => ({ toasts: [...s.toasts, { id, kind, text }] }))

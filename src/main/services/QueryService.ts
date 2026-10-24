@@ -156,7 +156,7 @@ export class QueryService {
         success: !error,
         kind: result?.kind ?? 'UNKNOWN',
         durationMs: error ? undefined : result?.durationMs,
-        resultCount: result?.page?.fetched ?? result?.rowsAffected,
+        resultCount: result?.totalRows ?? result?.page?.fetched ?? result?.rowsAffected,
         errorMessage: error?.message
       })
     } catch {

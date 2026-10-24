@@ -79,6 +79,19 @@ const api: RendererApi = {
   dialog: {
     chooseExportFile: (defaultName: string) =>
       ipcRenderer.invoke(IPC.dialogExportFile, defaultName)
+  },
+  window: {
+    minimize: () => ipcRenderer.invoke(IPC.windowMinimize),
+    maximize: () => ipcRenderer.invoke(IPC.windowMaximize),
+    close: () => ipcRenderer.invoke(IPC.windowClose),
+    isMaximized: () => ipcRenderer.invoke(IPC.windowIsMaximized),
+    onMaximizedChange: (callback: (isMaximized: boolean) => void) => {
+      const handler = (_: unknown, val: boolean) => callback(val)
+      ipcRenderer.on('window:maximized-change', handler)
+      return () => {
+        ipcRenderer.removeListener('window:maximized-change', handler)
+      }
+    }
   }
 }
 

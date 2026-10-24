@@ -1,0 +1,97 @@
+import React from 'react'
+
+interface OpenDBGridLogoProps {
+  size?: number
+  className?: string
+  glow?: boolean
+}
+
+/**
+ * OpenDBGrid Official Logo Component
+ * Direction 1: Cyber Cylinder & Matrix Grid with luminous cyan/teal gradients.
+ */
+export const OpenDBGridLogo: React.FC<OpenDBGridLogoProps> = ({
+  size = 16,
+  className = '',
+  glow = true
+}) => {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 32 32"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      style={{
+        display: 'inline-block',
+        verticalAlign: 'middle',
+        filter: glow ? 'drop-shadow(0 0 6px rgba(0, 240, 255, 0.45))' : undefined
+      }}
+    >
+      <defs>
+        <linearGradient id="dbgrid-grad-top" x1="12" y1="4" x2="28" y2="12" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#00f5d4" />
+          <stop offset="100%" stopColor="#00bbf9" />
+        </linearGradient>
+        <linearGradient id="dbgrid-grad-body" x1="12" y1="4" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#00bbf9" />
+          <stop offset="50%" stopColor="#0077b6" />
+          <stop offset="100%" stopColor="#023e8a" />
+        </linearGradient>
+        <linearGradient id="dbgrid-grad-ring" x1="12" y1="12" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#38bdf8" />
+          <stop offset="100%" stopColor="#0284c7" />
+        </linearGradient>
+        <linearGradient id="dbgrid-grid-lines" x1="2" y1="8" x2="18" y2="24" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#00f5d4" stopOpacity="0.9" />
+          <stop offset="100%" stopColor="#00bbf9" stopOpacity="0.4" />
+        </linearGradient>
+      </defs>
+
+      {/* Perspective Data Grid (left matrix intersecting the database) */}
+      <g stroke="url(#dbgrid-grid-lines)" strokeWidth="1" strokeLinecap="round" opacity="0.85">
+        {/* Horizontal grid rows projecting in perspective */}
+        <line x1="3" y1="10" x2="16" y2="7" />
+        <line x1="3" y1="15" x2="16" y2="12" />
+        <line x1="3" y1="20" x2="16" y2="17" />
+        <line x1="3" y1="25" x2="16" y2="22" />
+
+        {/* Vertical grid columns */}
+        <line x1="4" y1="9.7" x2="4" y2="24.8" />
+        <line x1="8" y1="8.7" x2="8" y2="23.8" />
+        <line x1="12" y1="7.8" x2="12" y2="22.8" />
+      </g>
+
+      {/* Matrix data intersection dots */}
+      <circle cx="4" cy="15" r="1.1" fill="#00f5d4" />
+      <circle cx="8" cy="13.9" r="1.2" fill="#38bdf8" />
+      <circle cx="4" cy="20" r="1.1" fill="#00f5d4" />
+      <circle cx="12" cy="17.8" r="1.3" fill="#00f5d4" />
+      <circle cx="8" cy="18.9" r="1.2" fill="#38bdf8" />
+
+      {/* Database Cylinder Tier 3 (Bottom Disk) */}
+      <path
+        d="M14 20C14 22.8 17.6 25 22 25C26.4 25 30 22.8 30 20V23C30 25.8 26.4 28 22 28C17.6 28 14 25.8 14 23V20Z"
+        fill="url(#dbgrid-grad-body)"
+      />
+      <ellipse cx="22" cy="20" rx="8" ry="2.6" fill="url(#dbgrid-grad-ring)" stroke="#38bdf8" strokeWidth="0.8" />
+
+      {/* Database Cylinder Tier 2 (Middle Disk) */}
+      <path
+        d="M14 14C14 16.8 17.6 19 22 19C26.4 19 30 16.8 30 14V17C30 19.8 26.4 22 22 22C17.6 22 14 19.8 14 17V14Z"
+        fill="url(#dbgrid-grad-body)"
+      />
+      <ellipse cx="22" cy="14" rx="8" ry="2.6" fill="url(#dbgrid-grad-ring)" stroke="#38bdf8" strokeWidth="0.8" />
+
+      {/* Database Cylinder Tier 1 (Top Disk with glowing open core rim) */}
+      <path
+        d="M14 8C14 10.8 17.6 13 22 13C26.4 13 30 10.8 30 8V11C30 13.8 26.4 16 22 16C17.6 16 14 13.8 14 11V8Z"
+        fill="url(#dbgrid-grad-body)"
+      />
+      <ellipse cx="22" cy="8" rx="8" ry="2.8" fill="url(#dbgrid-grad-top)" stroke="#00f5d4" strokeWidth="1" />
+      {/* Inner subtle rim hole */}
+      <ellipse cx="22" cy="8" rx="4.8" ry="1.6" fill="#081b29" stroke="#00f5d4" strokeWidth="0.75" />
+    </svg>
+  )
+}

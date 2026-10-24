@@ -1,0 +1,36 @@
+appId: com.opendbgrid.app
+productName: OpenDBGrid
+executableName: opendbgrid
+
+directories:
+  output: dist
+  buildResources: resources
+
+files:
+  - out/**/*
+  - package.json
+  - "!src/**"
+  - "!tests/**"
+  - "!scripts/**"
+  - "!compose.yaml"
+  - "!tsconfig*.json"
+  - "!electron.vite.config.ts"
+  - "!vitest.config.ts"
+
+linux:
+  target:
+    - target: deb
+      arch:
+        - x64
+  category: Development
+  icon: resources/icon.png
+  synopsis: A modern, cross-platform database GUI client & data grid
+
+deb:
+  priority: optional
+  maintainer: OpenDBGrid <info@opendbgrid.org>
+  depends:
+    - libnotify4
+    - libnss3
+    - libsecret-1-0
+    - xdg-utils

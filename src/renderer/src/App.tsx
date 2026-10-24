@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
+import { TitleBar } from './components/TitleBar'
 import { TopToolbar } from './components/TopToolbar'
 import { ConnectionSidebar } from './components/ConnectionSidebar'
 import { ExplorerPanel } from './components/ExplorerPanel'
@@ -7,6 +8,7 @@ import { EditorArea } from './components/EditorArea'
 import { StatusBar } from './components/StatusBar'
 import { CommandPalette } from './components/CommandPalette'
 import { ConfirmDialog } from './components/ConfirmDialog'
+import { PromptDialog } from './components/PromptDialog'
 import { QueryHistoryPanel } from './components/QueryHistoryPanel'
 import { SavedQueriesPanel } from './components/SavedQueriesPanel'
 import { ConnectionFormDialog } from './components/ConnectionFormDialog'
@@ -40,6 +42,7 @@ export function App(): JSX.Element {
 
   return (
     <div className="app">
+      <TitleBar />
       <TopToolbar />
       <div className="app-main">
         <PanelGroup direction="horizontal" autoSaveId="dbforge-main">
@@ -66,6 +69,7 @@ export function App(): JSX.Element {
       <SavedQueriesPanel />
       <ConnectionFormDialog />
       <ConfirmDialog />
+      <PromptDialog />
       <Toasts />
     </div>
   )

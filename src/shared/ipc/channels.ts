@@ -46,7 +46,12 @@ export const IPC = {
   // settings + ui ----------------------------------------------------------
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
-  dialogExportFile: 'dialog:export-file'
+  dialogExportFile: 'dialog:export-file',
+  // window controls --------------------------------------------------------
+  windowMinimize: 'window:minimize',
+  windowMaximize: 'window:maximize',
+  windowClose: 'window:close',
+  windowIsMaximized: 'window:is-maximized'
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

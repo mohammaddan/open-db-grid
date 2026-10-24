@@ -24,8 +24,11 @@ async function createWindow(): Promise<void> {
     minWidth: 1024,
     minHeight: 640,
     show: false,
-    backgroundColor: '#1d1f24',
-    title: 'DBForge',
+    backgroundColor: '#0b0f17',
+    title: 'OpenDBGrid',
+    icon: join(__dirname, '../../resources/icon.png'),
+    frame: false,
+    titleBarStyle: 'hidden',
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -36,6 +39,8 @@ async function createWindow(): Promise<void> {
   })
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
+  mainWindow.on('maximize', () => mainWindow?.webContents.send('window:maximized-change', true))
+  mainWindow.on('unmaximize', () => mainWindow?.webContents.send('window:maximized-change', false))
   mainWindow.on('closed', () => {
     mainWindow = null
   })

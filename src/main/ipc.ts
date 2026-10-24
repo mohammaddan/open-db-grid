@@ -1,7 +1,7 @@
 // Registers all IPC handlers. Each handler validates its payload against the
 // shared contract types, calls the appropriate service, and never leaks secrets.
 
-import { ipcMain, dialog } from 'electron'
+import { ipcMain, dialog, BrowserWindow } from 'electron'
 import { IPC } from '@shared/ipc/channels'
 import type { ConnectionSaveRequest, ConnectionTestRequest } from '@shared/models/connection'
 import type { ExecuteRequest, ExplainRequest, ExportRequest } from '@shared/models/result'
@@ -153,5 +153,31 @@ export function registerIpc(services: AppServices): void {
       ]
     })
     return res.canceled ? null : res.filePath
+  })
+
+  // -- window controls -----------------------------------------------------
+  ipcMain.handle(IPC.windowMinimize, (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    win?.minimize()
+  })
+  ipcMain.handle(IPC.windowMaximize, (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win) {
+      if (win.isMaximized()) {
+        win.unmaximize()
+      } else {
+        win.maximize()
+      }
+      return win.isMaximized()
+    }
+    return false
+  })
+  ipcMain.handle(IPC.windowClose, (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    win?.close()
+  })
+  ipcMain.handle(IPC.windowIsMaximized, (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    return win?.isMaximized() ?? false
   })
 }

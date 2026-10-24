@@ -8,6 +8,9 @@ import type {
 import { useUiStore } from './ui'
 import { extractApiError } from '@renderer/lib/api'
 
+import { useExplorerStore } from './explorer'
+import { useEditorStore } from './editor'
+
 interface ConnectionsState {
   connections: DbConnection[]
   groups: ConnectionGroup[]
@@ -53,11 +56,22 @@ export const useConnectionsStore = create<ConnectionsState>((set, get) => ({
         window.api.groups.list(),
         window.api.connections.listOpen()
       ])
+      const savedSelectedId = localStorage.getItem('dbforge_last_selected_connection')
+      const initialSelectedId =
+        savedSelectedId && connections.some((c) => c.id === savedSelectedId)
+          ? savedSelectedId
+          : connections[0]?.id ?? null
+
       set({
         connections,
         groups,
-        openInfo: Object.fromEntries(open.map((o) => [o.connectionId, o]))
+        openInfo: Object.fromEntries(open.map((o) => [o.connectionId, o])),
+        selectedId: initialSelectedId
       })
+      if (initialSelectedId) {
+        useExplorerStore.getState().setActiveConnection(initialSelectedId)
+        useEditorStore.getState().switchConnection(initialSelectedId)
+      }
     } catch {
       useUiStore.getState().pushToast('error', 'Failed to load connections.')
     }
@@ -95,6 +109,9 @@ export const useConnectionsStore = create<ConnectionsState>((set, get) => ({
 
   async removeConnection(id) {
     await window.api.connections.remove(id)
+    if (get().selectedId === id) {
+      localStorage.removeItem('dbforge_last_selected_connection')
+    }
     set((s) => ({
       connections: s.connections.filter((c) => c.id !== id),
       openInfo: { ...s.openInfo },
@@ -102,6 +119,7 @@ export const useConnectionsStore = create<ConnectionsState>((set, get) => ({
     }))
     delete get().openInfo[id]
     set({ openInfo: { ...get().openInfo } })
+    useEditorStore.getState().removeConnectionTabs(id)
   },
 
   async duplicateConnection(id) {
@@ -131,6 +149,11 @@ export const useConnectionsStore = create<ConnectionsState>((set, get) => ({
   },
 
   select(id) {
+    if (id) {
+      localStorage.setItem('dbforge_last_selected_connection', id)
+    } else {
+      localStorage.removeItem('dbforge_last_selected_connection')
+    }
     set({ selectedId: id })
   },
 
