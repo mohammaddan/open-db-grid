@@ -25,6 +25,7 @@ linux:
   category: Development
   icon: resources/icon.png
   synopsis: A modern, cross-platform database GUI client & data grid
+  syncDesktopName: true
 
 deb:
   priority: optional

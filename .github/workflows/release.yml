@@ -46,6 +46,8 @@ jobs:
 
       - name: Build Debian (.deb) binary
         run: npm run build:deb
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload .deb Artifact
         uses: actions/upload-artifact@v4
