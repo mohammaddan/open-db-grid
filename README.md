@@ -13,6 +13,10 @@ Think TablePlus + DataGrip + VS Code: dense, keyboard-first, fast, and safe arou
 Open app → select connection → browse schema → write SQL → execute → edit cells → save
 ```
 
+<p align="center">
+  <img src="resources/image.png" alt="OpenDBGrid Screenshot" width="100%" />
+</p>
+
 ---
 
 ## 1. Architecture overview
