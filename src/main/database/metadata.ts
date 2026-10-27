@@ -6,7 +6,13 @@ import type { QueryResultRow } from 'pg'
 import type {
   ExplorerNode,
   ExploreSource,
-  TableColumnMeta
+  TableColumnMeta,
+  TableStructureInfo,
+  TableIndexInfo,
+  TableConstraintInfo,
+  TableForeignKeyInfo,
+  TableTriggerInfo,
+  TableSearchResult
 } from '@shared/models/explorer'
 
 /** Minimal client surface satisfied by pg PoolClient / Client. */
@@ -70,6 +76,18 @@ export async function explorePostgres(
         node('procedures', 'Procedures', `procedures:${s}`, true),
         node('sequences', 'Sequences', `sequences:${s}`, true),
         node('types', 'Types', `types:${s}`, true)
+      ]
+    }
+
+    case 'table-sections': {
+      const s = source.schema
+      const t = source.table
+      return [
+        node('columns', 'Columns', `table-columns:${s}:${t}`, true),
+        node('indexes', 'Indexes', `table-indexes:${s}:${t}`, true),
+        node('foreign-keys', 'Foreign Keys', `table-fks:${s}:${t}`, true),
+        node('constraints', 'Constraints', `table-constraints:${s}:${t}`, true),
+        node('triggers', 'Triggers', `table-triggers:${s}:${t}`, true)
       ]
     }
 
@@ -158,13 +176,16 @@ export async function explorePostgres(
     case 'table-indexes':
       return queryDefs(
         q,
-        `SELECT i.relname AS name, pg_get_indexdef(idx.indexrelid) AS definition
+        `SELECT i.relname AS name,
+                pg_get_indexdef(idx.indexrelid) AS definition,
+                idx.indisprimary AS "isPrimary",
+                idx.indisunique AS "isUnique"
            FROM pg_index idx
            JOIN pg_class t ON t.oid = idx.indrelid
            JOIN pg_namespace n ON n.oid = t.relnamespace
            JOIN pg_class i ON i.oid = idx.indexrelid
           WHERE n.nspname = $1 AND t.relname = $2
-          ORDER BY i.relname`,
+          ORDER BY idx.indisprimary DESC, i.relname`,
         'index',
         [source.schema, source.table]
       )
@@ -209,7 +230,7 @@ export async function explorePostgres(
     case 'table-triggers': {
       const r = await q.query<{ name: string; definition: string; enabled: string }>(
         `SELECT tg.tgname AS name, pg_get_triggerdef(tg.oid) AS definition,
-                CASE WHEN NOT tg.tgenabled THEN 'disabled' ELSE 'enabled' END AS enabled
+                CASE WHEN tg.tgenabled = 'D' THEN 'disabled' ELSE 'enabled' END AS enabled
            FROM pg_trigger tg
            JOIN pg_class c ON c.oid = tg.tgrelid
            JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -251,7 +272,7 @@ async function queryRels(
     [schema, kinds]
   )
   const ck =
-    kind === 'table' ? 'table-columns' : kind === 'view' ? 'view-columns' : 'matview-columns'
+    kind === 'table' ? 'table' : kind === 'view' ? 'view-columns' : 'matview-columns'
   return r.rows.map((row) =>
     node(kind as ExplorerNode['kind'], row.name, `${ck}:${schema}:${row.name}`, true, {
       comment: row.comment ?? undefined,
@@ -266,13 +287,22 @@ async function queryDefs(
   kind: 'index' | 'foreign-key',
   params: unknown[]
 ): Promise<ExplorerNode[]> {
-  const r = await q.query<{ name: string; definition: string; schema: string; table: string }>(
+  const r = await q.query<{ name: string; definition: string; isPrimary?: boolean; isUnique?: boolean }>(
     sql,
     params
   )
+  const schema = String(params[0] ?? '')
+  const table = String(params[1] ?? '')
   return r.rows.map((row) =>
-    node(kind, row.name, `${kind}:${row.schema}:${row.table}:${row.name}`, false, {
-      comment: row.definition
+    node(kind, row.name, `${kind}:${schema}:${table}:${row.name}`, false, {
+      comment: row.definition,
+      meta: {
+        schema,
+        table,
+        isPrimary: Boolean(row.isPrimary),
+        isUnique: Boolean(row.isUnique),
+        definition: row.definition
+      }
     })
   )
 }
@@ -371,3 +401,165 @@ export async function relationExists(
   )
   return r.rows[0]?.exists ?? false
 }
+
+export function generateTableDdl(
+  schema: string,
+  table: string,
+  columns: TableColumnMeta[],
+  indexes: TableIndexInfo[],
+  constraints: TableConstraintInfo[]
+): string {
+  const lines: string[] = []
+  for (const c of columns) {
+    let colDef = `  "${c.name}" ${c.dataType}`
+    if (!c.nullable) colDef += ' NOT NULL'
+    if (c.defaultValue) colDef += ` DEFAULT ${c.defaultValue}`
+    lines.push(colDef)
+  }
+  for (const con of constraints) {
+    lines.push(`  CONSTRAINT "${con.name}" ${con.definition}`)
+  }
+  let ddl = `CREATE TABLE "${schema}"."${table}" (\n${lines.join(',\n')}\n);\n`
+  if (indexes.length > 0) {
+    ddl += '\n' + indexes.map((idx) => (idx.definition.endsWith(';') ? idx.definition : idx.definition + ';')).join('\n') + '\n'
+  }
+  return ddl
+}
+
+export async function getTableStructure(
+  q: SqlClient,
+  schema: string,
+  table: string
+): Promise<TableStructureInfo> {
+  const relRes = await q.query<{ kind: string; comment: string | null }>(
+    `SELECT c.relkind AS kind, obj_description(c.oid) AS comment
+       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = $1 AND c.relname = $2`,
+    [schema, table]
+  )
+  const relKind = relRes.rows[0]?.kind === 'v' ? 'view' : relRes.rows[0]?.kind === 'm' ? 'matview' : 'table'
+  const comment = relRes.rows[0]?.comment ?? undefined
+
+  const columns = await columnsForTable(q, schema, table, true)
+
+  const idxRes = await q.query<{
+    name: string
+    definition: string
+    isPrimary: boolean
+    isUnique: boolean
+  }>(
+    `SELECT i.relname AS name,
+            pg_get_indexdef(idx.indexrelid) AS definition,
+            idx.indisprimary AS "isPrimary",
+            idx.indisunique AS "isUnique"
+       FROM pg_index idx
+       JOIN pg_class t ON t.oid = idx.indrelid
+       JOIN pg_namespace n ON n.oid = t.relnamespace
+       JOIN pg_class i ON i.oid = idx.indexrelid
+      WHERE n.nspname = $1 AND t.relname = $2
+      ORDER BY idx.indisprimary DESC, i.relname`,
+    [schema, table]
+  )
+  const indexes: TableIndexInfo[] = idxRes.rows.map((r) => ({
+    name: r.name,
+    definition: r.definition,
+    isPrimary: r.isPrimary,
+    isUnique: r.isUnique
+  }))
+
+  const conRes = await q.query<{ name: string; definition: string; type: string }>(
+    `SELECT con.conname AS name,
+            pg_get_constraintdef(con.oid) AS definition,
+            CASE con.contype
+              WHEN 'p' THEN 'PRIMARY KEY'
+              WHEN 'u' THEN 'UNIQUE'
+              WHEN 'c' THEN 'CHECK'
+              WHEN 'f' THEN 'FOREIGN KEY'
+              WHEN 'x' THEN 'EXCLUSION'
+              ELSE con.contype::text
+            END AS type
+       FROM pg_constraint con
+       JOIN pg_class t ON t.oid = con.conrelid
+       JOIN pg_namespace n ON n.oid = t.relnamespace
+      WHERE n.nspname = $1 AND t.relname = $2
+      ORDER BY con.contype, con.conname`,
+    [schema, table]
+  )
+  const constraints: TableConstraintInfo[] = conRes.rows.map((r) => ({
+    name: r.name,
+    type: r.type,
+    definition: r.definition
+  }))
+
+  const fkRes = await q.query<{ name: string; definition: string }>(
+    `SELECT con.conname AS name, pg_get_constraintdef(con.oid) AS definition
+       FROM pg_constraint con
+       JOIN pg_class t ON t.oid = con.conrelid
+       JOIN pg_namespace n ON n.oid = t.relnamespace
+      WHERE n.nspname = $1 AND t.relname = $2 AND con.contype = 'f'
+      ORDER BY con.conname`,
+    [schema, table]
+  )
+  const foreignKeys: TableForeignKeyInfo[] = fkRes.rows.map((r) => ({
+    name: r.name,
+    definition: r.definition
+  }))
+
+  const trgRes = await q.query<{ name: string; definition: string; enabled: string }>(
+    `SELECT tg.tgname AS name, pg_get_triggerdef(tg.oid) AS definition,
+            CASE WHEN tg.tgenabled = 'D' THEN 'disabled' ELSE 'enabled' END AS enabled
+       FROM pg_trigger tg
+       JOIN pg_class c ON c.oid = tg.tgrelid
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = $1 AND c.relname = $2 AND NOT tg.tgisinternal
+      ORDER BY tg.tgname`,
+    [schema, table]
+  )
+  const triggers: TableTriggerInfo[] = trgRes.rows.map((r) => ({
+    name: r.name,
+    definition: r.definition,
+    enabled: r.enabled
+  }))
+
+  const ddl = generateTableDdl(schema, table, columns, indexes, constraints)
+
+  return {
+    schema,
+    table,
+    kind: relKind,
+    columns,
+    indexes,
+    constraints,
+    foreignKeys,
+    triggers,
+    comment,
+    ddl
+  }
+}
+
+export async function searchTables(
+  q: SqlClient,
+  query: string
+): Promise<TableSearchResult[]> {
+  const qClean = query.trim()
+  const r = await q.query<{ schema: string; name: string; kind: 'table' | 'view' | 'matview'; comment: string | null }>(
+    `SELECT n.nspname AS schema, c.relname AS name,
+            CASE c.relkind WHEN 'r' THEN 'table' WHEN 'p' THEN 'table' WHEN 'v' THEN 'view' WHEN 'm' THEN 'matview' END AS kind,
+            obj_description(c.oid) AS comment
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
+        AND c.relkind IN ('r', 'p', 'v', 'm')
+        AND ($1 = '' OR c.relname ILIKE ('%' || $1 || '%'))
+      ORDER BY c.relname
+      LIMIT 200`,
+    [qClean]
+  )
+  return r.rows.map((row) => ({
+    schema: row.schema,
+    name: row.name,
+    kind: row.kind,
+    comment: row.comment ?? undefined
+  }))
+}
+

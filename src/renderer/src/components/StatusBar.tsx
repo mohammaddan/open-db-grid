@@ -155,7 +155,7 @@ export function StatusBar(): JSX.Element {
           <div className="theme-popover">
             <div className="theme-popover-header">
               <span>Color Themes</span>
-              <span style={{ fontSize: 10, color: 'var(--fg-dim)' }}>8 themes</span>
+              <span style={{ fontSize: 10, color: 'var(--fg-dim)' }}>{AVAILABLE_THEMES.length} themes</span>
             </div>
             {AVAILABLE_THEMES.map((th) => {
               const isSelected =

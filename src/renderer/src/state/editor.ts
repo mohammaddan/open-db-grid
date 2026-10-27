@@ -31,6 +31,9 @@ export interface EditorTab {
   hasMore: boolean
   pending: PendingEdit[]
   browseTarget: BrowseTarget | null
+  pageNumber: number
+  pageSize: number
+  viewMode?: 'data' | 'structure'
 }
 
 export type RunMode = 'current' | 'selection' | 'all'
@@ -56,6 +59,10 @@ interface EditorState {
 
   newQueryTab: (connectionId?: string | null, sql?: string) => string
   openBrowse: (connectionId: string, target: BrowseTarget) => Promise<void>
+  openStructure: (connectionId: string, target: BrowseTarget) => Promise<void>
+  setViewMode: (tabId: string, mode: 'data' | 'structure') => void
+  goToPage: (tabId: string, pageNumber: number, pageSize?: number) => Promise<void>
+  changePageSize: (tabId: string, pageSize: number) => Promise<void>
   closeTab: (id: string) => void
   activate: (id: string) => void
   setSql: (id: string, sql: string, dirty?: boolean) => void
@@ -91,6 +98,9 @@ interface PersistedTab {
   sql: string
   dirty: boolean
   browseTarget: BrowseTarget | null
+  pageNumber?: number
+  pageSize?: number
+  viewMode?: 'data' | 'structure'
 }
 
 const STORAGE_KEY = 'dbforge_editor_sessions_v1'
@@ -121,7 +131,10 @@ function loadPersistedState(): {
       plan: null,
       hasMore: false,
       pending: [],
-      browseTarget: t.browseTarget ?? null
+      browseTarget: t.browseTarget ?? null,
+      pageNumber: t.pageNumber ?? 1,
+      pageSize: t.pageSize ?? 500,
+      viewMode: t.viewMode ?? 'data'
     }))
     const activeTabByConnection = parsed.activeTabByConnection ?? {}
     const activeId = parsed.activeId ?? null
@@ -145,7 +158,10 @@ function savePersistedState(
         connectionId: t.connectionId,
         sql: t.sql,
         dirty: t.dirty,
-        browseTarget: t.browseTarget
+        browseTarget: t.browseTarget,
+        pageNumber: t.pageNumber,
+        pageSize: t.pageSize,
+        viewMode: t.viewMode
       })),
       activeId,
       activeTabByConnection
@@ -185,11 +201,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   async reloadBrowse(tabId) {
     const tab = get().tabs.find((t) => t.id === tabId)
     if (!tab || !tab.connectionId || !tab.browseTarget || tab.running) return
+    const size = tab.pageSize ?? 500
+    const pageNum = tab.pageNumber ?? 1
     set((s) => ({
       tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, running: true, error: null } : t))
     }))
     try {
-      const result = await window.api.explorer.browse(tab.connectionId, tab.browseTarget, 500)
+      const result = await window.api.explorer.browse(tab.connectionId, tab.browseTarget, size, pageNum)
       const plan = await fetchPlan(tab.connectionId, tab.sql, result).catch(() => null)
       set((s) => ({
         tabs: s.tabs.map((t) =>
@@ -243,7 +261,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       plan: null,
       hasMore: false,
       pending: [],
-      browseTarget: null
+      browseTarget: null,
+      pageNumber: 1,
+      pageSize: 500,
+      viewMode: 'data'
     }
     const connKey = connId ?? '__none__'
     set((s) => ({
@@ -263,6 +284,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         t.browseTarget?.table === target.table
     )
     if (existing) {
+      set((s) => ({
+        tabs: s.tabs.map((t) => (t.id === existing.id ? { ...t, viewMode: 'data' } : t))
+      }))
       get().activate(existing.id)
       return
     }
@@ -281,7 +305,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       plan: null,
       hasMore: false,
       pending: [],
-      browseTarget: target
+      browseTarget: target,
+      pageNumber: 1,
+      pageSize: 500,
+      viewMode: 'data'
     }
     const connKey = connectionId ?? '__none__'
     set((s) => ({
@@ -290,7 +317,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       activeTabByConnection: { ...s.activeTabByConnection, [connKey]: id }
     }))
     try {
-      const result = await window.api.explorer.browse(connectionId, target, 500)
+      const result = await window.api.explorer.browse(connectionId, target, 500, 1)
       const plan = await fetchPlan(connectionId, tab.sql, result)
       set((s) => ({
         tabs: s.tabs.map((t) =>
@@ -305,6 +332,124 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         tabs: s.tabs.map((t) => (t.id === id ? { ...t, running: false, error: info } : t))
       }))
     }
+  },
+
+  async openStructure(connectionId, target) {
+    const existing = get().tabs.find(
+      (t) =>
+        t.connectionId === connectionId &&
+        t.kind === 'browse' &&
+        t.browseTarget?.schema === target.schema &&
+        t.browseTarget?.table === target.table
+    )
+    if (existing) {
+      set((s) => ({
+        tabs: s.tabs.map((t) => (t.id === existing.id ? { ...t, viewMode: 'structure' } : t))
+      }))
+      get().activate(existing.id)
+      return
+    }
+
+    const id = newId()
+    const tab: EditorTab = {
+      id,
+      kind: 'browse',
+      title: target.table,
+      connectionId,
+      sql: `SELECT * FROM "${target.schema.replace(/"/g, '""')}"."${target.table.replace(/"/g, '""')}"`,
+      dirty: false,
+      running: false,
+      result: null,
+      error: null,
+      plan: null,
+      hasMore: false,
+      pending: [],
+      browseTarget: target,
+      pageNumber: 1,
+      pageSize: 500,
+      viewMode: 'structure'
+    }
+    const connKey = connectionId ?? '__none__'
+    set((s) => ({
+      tabs: [...s.tabs, tab],
+      activeId: id,
+      activeTabByConnection: { ...s.activeTabByConnection, [connKey]: id }
+    }))
+  },
+
+  setViewMode(tabId, mode) {
+    set((s) => ({
+      tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, viewMode: mode } : t))
+    }))
+  },
+
+  async goToPage(tabId, pageNumber, newPageSize) {
+    const tab = get().tabs.find((t) => t.id === tabId)
+    if (!tab || !tab.connectionId || tab.running) return
+    const size = newPageSize ?? tab.pageSize ?? 500
+    const pageNum = Math.max(1, pageNumber)
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.id === tabId ? { ...t, running: true, error: null, pageNumber: pageNum, pageSize: size } : t
+      )
+    }))
+    try {
+      if (tab.kind === 'browse' && tab.browseTarget) {
+        const result = await window.api.explorer.browse(tab.connectionId, tab.browseTarget, size, pageNum)
+        const plan = await fetchPlan(tab.connectionId, tab.sql, result).catch(() => null)
+        set((s) => ({
+          tabs: s.tabs.map((t) =>
+            t.id === tabId
+              ? {
+                  ...t,
+                  running: false,
+                  result,
+                  plan,
+                  pageNumber: pageNum,
+                  pageSize: size,
+                  hasMore: result.page?.hasMore ?? false
+                }
+              : t
+          )
+        }))
+      } else if (tab.result?.sessionId) {
+        const page = await window.api.query.page(tab.connectionId, tab.result.sessionId, size, pageNum)
+        set((s) => ({
+          tabs: s.tabs.map((t) => {
+            if (t.id !== tabId || !t.result) return t
+            const result = {
+              ...t.result,
+              page: {
+                ...page,
+                totalRows: page.totalRows ?? t.result.totalRows ?? t.result.page?.totalRows
+              },
+              totalRows: page.totalRows ?? t.result.totalRows ?? t.result.page?.totalRows
+            }
+            return {
+              ...t,
+              running: false,
+              result,
+              pageNumber: pageNum,
+              pageSize: size,
+              hasMore: page.hasMore
+            }
+          })
+        }))
+      } else {
+        set((s) => ({
+          tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, running: false } : t))
+        }))
+      }
+    } catch (err) {
+      const info = extractApiError(err)
+      set((s) => ({
+        tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, running: false, error: info } : t))
+      }))
+    }
+  },
+
+  async changePageSize(tabId, newPageSize) {
+    await get().goToPage(tabId, 1, newPageSize)
   },
 
   closeTab(id) {
@@ -517,7 +662,7 @@ async run(tabId, mode) {
       const req = {
         connectionId: tab.connectionId,
         sql: statements.map((x) => x.text).join(';\n'),
-        pageSize: 500,
+        pageSize: tab.pageSize ?? 500,
         sessionKey: runningKey
       }
       const result = isMulti
@@ -539,6 +684,7 @@ async run(tabId, mode) {
                 runningKey: undefined,
                 result,
                 plan,
+                pageNumber: 1,
                 hasMore: result.page?.hasMore ?? false,
                 error: null,
                 pending: []

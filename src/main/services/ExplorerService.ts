@@ -1,7 +1,14 @@
 // ExplorerService: lazy, async metadata tree backed by the driver's catalog
 // queries. The renderer never emits SQL; it requests children by typed source.
 
-import type { ExplorerChildrenRequest, ExplorerNode, BrowseTarget, SafeEditPlan } from '@shared/models/explorer'
+import type {
+  ExplorerChildrenRequest,
+  ExplorerNode,
+  BrowseTarget,
+  SafeEditPlan,
+  TableStructureInfo,
+  TableSearchResult
+} from '@shared/models/explorer'
 import type { ExecuteResult } from '@shared/models/result'
 import type { ExploreSource } from '@shared/models/explorer'
 import { ConnectionService } from './ConnectionService'
@@ -22,9 +29,24 @@ export class ExplorerService {
     return session.planForSelect(sql, resultColumnNames)
   }
 
-  async browse(connectionId: string, target: BrowseTarget, pageSize?: number): Promise<ExecuteResult> {
+  async browse(
+    connectionId: string,
+    target: BrowseTarget,
+    pageSize?: number,
+    pageNumber?: number
+  ): Promise<ExecuteResult> {
     const session = await this.connections.ensureSession(connectionId)
-    return session.browse(target, pageSize)
+    return session.browse(target, pageSize, pageNumber)
+  }
+
+  async structure(connectionId: string, target: BrowseTarget): Promise<TableStructureInfo> {
+    const session = await this.connections.ensureSession(connectionId)
+    return session.tableStructure(target.schema, target.table)
+  }
+
+  async searchTables(connectionId: string, query: string): Promise<TableSearchResult[]> {
+    const session = await this.connections.ensureSession(connectionId)
+    return session.searchTables(query)
   }
 }
 

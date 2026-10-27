@@ -2,7 +2,16 @@ import type { IpcChannel } from './channels'
 import type { DbConnection, ConnectionGroup, ConnectionSaveRequest, ConnectionTestRequest, ConnectionTestResult, OpenConnectionInfo } from '../models/connection'
 import type { AppSettings } from '../models/settings'
 import type { ExecuteRequest, ExecuteResult, ExplainRequest, ExplainResult, QueryPage, QueryErrorInfo, CancelResult, ExportRequest, ExportResult } from '../models/result'
-import type { ExplorerNode, ExplorerChildrenRequest, BrowseTarget, SafeEditPlan, PendingEdit, SaveEditsResult } from '../models/explorer'
+import type {
+  ExplorerNode,
+  ExplorerChildrenRequest,
+  BrowseTarget,
+  SafeEditPlan,
+  PendingEdit,
+  SaveEditsResult,
+  TableStructureInfo,
+  TableSearchResult
+} from '../models/explorer'
 import type { TransactionStatus, BeginTransactionResult } from '../models/transactions'
 import type { HistoryEntry, SavedQuery } from '../models/history'
 
@@ -31,6 +40,8 @@ export type {
   SafeEditPlan,
   PendingEdit,
   SaveEditsResult,
+  TableStructureInfo,
+  TableSearchResult,
   TransactionStatus,
   BeginTransactionResult,
   HistoryEntry,
@@ -64,7 +75,7 @@ export interface RendererApi {
     execute: (req: ExecuteRequest) => Promise<ExecuteResult>
     executeScript: (req: ExecuteRequest) => Promise<ExecuteResult>
     explain: (req: ExplainRequest) => Promise<ExplainResult>
-    page: (connectionId: string, sessionId: string, pageSize?: number) => Promise<QueryPage>
+    page: (connectionId: string, sessionId: string, pageSize?: number, pageNumber?: number) => Promise<QueryPage>
     cancel: (connectionId: string, sessionId: string) => Promise<CancelResult>
     close: (connectionId: string, sessionId: string) => Promise<void>
     exportResult: (req: ExportRequest) => Promise<ExportResult>
@@ -80,8 +91,11 @@ export interface RendererApi {
     browse: (
       connectionId: string,
       target: BrowseTarget,
-      pageSize?: number
+      pageSize?: number,
+      pageNumber?: number
     ) => Promise<ExecuteResult>
+    structure: (connectionId: string, target: BrowseTarget) => Promise<TableStructureInfo>
+    searchTables: (connectionId: string, query: string) => Promise<TableSearchResult[]>
   }
   txn: {
     status: (connectionId: string) => Promise<TransactionStatus>

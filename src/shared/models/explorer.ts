@@ -148,3 +148,48 @@ export interface TableColumnMeta {
   defaultValue?: string | null
   comment?: string | null
 }
+
+export interface TableIndexInfo {
+  name: string
+  definition: string
+  isPrimary: boolean
+  isUnique: boolean
+  columns?: string[]
+}
+
+export interface TableConstraintInfo {
+  name: string
+  type: string
+  definition: string
+}
+
+export interface TableForeignKeyInfo {
+  name: string
+  definition: string
+}
+
+export interface TableTriggerInfo {
+  name: string
+  definition: string
+  enabled: string
+}
+
+export interface TableStructureInfo {
+  schema: string
+  table: string
+  kind: 'table' | 'view' | 'matview'
+  columns: TableColumnMeta[]
+  indexes: TableIndexInfo[]
+  constraints: TableConstraintInfo[]
+  foreignKeys: TableForeignKeyInfo[]
+  triggers: TableTriggerInfo[]
+  comment?: string | null
+  ddl?: string
+}
+
+export interface TableSearchResult {
+  schema: string
+  name: string
+  kind: 'table' | 'view' | 'matview'
+  comment?: string | null
+}

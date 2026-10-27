@@ -4,7 +4,7 @@
 // new tab shortcut (+), and a quick tab switcher dropdown.
 
 import { useRef, useEffect, useState, useMemo } from 'react'
-import { X, Circle, ChevronLeft, ChevronRight, Plus, ChevronDown, ListFilter, WrapText } from 'lucide-react'
+import { X, Circle, ChevronLeft, ChevronRight, Plus, ChevronDown, ListFilter, WrapText, Table, Layers } from 'lucide-react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 import { useEditorStore, type EditorTab } from '@renderer/state/editor'
 import { useConnectionsStore } from '@renderer/state/connections'
@@ -12,6 +12,7 @@ import { useExplorerStore } from '@renderer/state/explorer'
 import { closeTabSafe } from '@renderer/lib/shortcuts'
 import { SqlEditor } from './SqlEditor'
 import { ResultTable } from './ResultTable'
+import { TableStructureView } from './TableStructureView'
 import { colorOf } from '@shared/models/connection'
 
 export function EditorArea(): JSX.Element {
@@ -332,6 +333,7 @@ function TabPane({ tab }: { tab: EditorTab }): JSX.Element {
   const exportResult = useEditorStore((s) => s.exportResult)
   const run = useEditorStore((s) => s.run)
   const reloadBrowse = useEditorStore((s) => s.reloadBrowse)
+  const setViewMode = useEditorStore((s) => s.setViewMode)
 
   // Auto-reload data for restored browse tabs
   useEffect(() => {
@@ -347,6 +349,8 @@ function TabPane({ tab }: { tab: EditorTab }): JSX.Element {
     tab.connectionId ? s.connections.find((c) => c.id === tab.connectionId) : undefined
   )
 
+  const isStructureView = tab.viewMode === 'structure' && tab.connectionId && tab.browseTarget
+
   return (
     <div className="tab-pane">
       {conn?.accessMode === 'read-only' && (
@@ -354,36 +358,67 @@ function TabPane({ tab }: { tab: EditorTab }): JSX.Element {
           READ ONLY — {conn.name}. Data and schema modifications are disabled.
         </div>
       )}
-      <PanelGroup direction="vertical" autoSaveId="dbforge-editor-split">
-        <Panel defaultSize={45} minSize={20}>
-          <div className="pane-editor">
-            <SqlEditor
-              tabId={tab.id}
-              doc={tab.sql}
-              connectionId={tab.connectionId}
-              fontSize={13}
-              readOnly={false}
-              errorPosition={tab.error?.position}
-              onChange={(doc) => setSql(tab.id, doc, true)}
-              onExecute={(mode) => void run(tab.id, mode)}
-            />
+
+      {tab.browseTarget && (
+        <div className="tab-view-mode-bar">
+          <div className="mode-segmented-control">
+            <button
+              className={'mode-btn' + (!isStructureView ? ' active' : '')}
+              onClick={() => setViewMode(tab.id, 'data')}
+            >
+              <Table size={12} />
+              <span>Data Grid</span>
+            </button>
+            <button
+              className={'mode-btn' + (isStructureView ? ' active' : '')}
+              onClick={() => setViewMode(tab.id, 'structure')}
+            >
+              <Layers size={12} />
+              <span>Structure & Indexes</span>
+            </button>
           </div>
-        </Panel>
-        <PanelResizeHandle className="resize-h" />
-        <Panel defaultSize={55} minSize={20}>
-          <div className="pane-result">
-            <ResultTable
-              tab={tab}
-              readOnly={readOnly}
-              onLoadMore={() => void loadMore(tab.id)}
-              onApplyEdit={(rk, col, oldV, newV, pk) => applyEdit(tab.id, rk, col, oldV, newV, pk)}
-              onSaveEdits={() => void saveEdits(tab.id)}
-              onDiscardEdits={() => discardEdits(tab.id)}
-              onExport={(fmt) => void exportResult(tab.id, fmt)}
-            />
-          </div>
-        </Panel>
-      </PanelGroup>
+        </div>
+      )}
+
+      {isStructureView ? (
+        <TableStructureView
+          tabId={tab.id}
+          connectionId={tab.connectionId!}
+          target={tab.browseTarget!}
+          onBackToData={() => setViewMode(tab.id, 'data')}
+        />
+      ) : (
+        <PanelGroup direction="vertical" autoSaveId="dbforge-editor-split">
+          <Panel defaultSize={45} minSize={20}>
+            <div className="pane-editor">
+              <SqlEditor
+                tabId={tab.id}
+                doc={tab.sql}
+                connectionId={tab.connectionId}
+                fontSize={13}
+                readOnly={false}
+                errorPosition={tab.error?.position}
+                onChange={(doc) => setSql(tab.id, doc, true)}
+                onExecute={(mode) => void run(tab.id, mode)}
+              />
+            </div>
+          </Panel>
+          <PanelResizeHandle className="resize-h" />
+          <Panel defaultSize={55} minSize={20}>
+            <div className="pane-result">
+              <ResultTable
+                tab={tab}
+                readOnly={readOnly}
+                onLoadMore={() => void loadMore(tab.id)}
+                onApplyEdit={(rk, col, oldV, newV, pk) => applyEdit(tab.id, rk, col, oldV, newV, pk)}
+                onSaveEdits={() => void saveEdits(tab.id)}
+                onDiscardEdits={() => discardEdits(tab.id)}
+                onExport={(fmt) => void exportResult(tab.id, fmt)}
+              />
+            </div>
+          </Panel>
+        </PanelGroup>
+      )}
     </div>
   )
 }

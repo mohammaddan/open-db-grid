@@ -1,7 +1,7 @@
 {
   "name": "opendbgrid",
   "productName": "OpenDBGrid",
-  "version": "0.1.0",
+  "version": "0.5.0",
   "description": "A modern, cross-platform database GUI client & data grid (PostgreSQL first).",
   "main": "./out/main/index.js",
   "author": "OpenDBGrid",

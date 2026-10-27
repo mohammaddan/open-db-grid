@@ -6,6 +6,14 @@ export type ThemeName =
   | 'emerald-matrix'
   | 'dracula-amethyst'
   | 'nordic-frost'
+  | 'tokyo-night'
+  | 'catppuccin-mocha'
+  | 'gruvbox-dark'
+  | 'solarized-dark'
+  | 'monokai-pro'
+  | 'github-dark'
+  | 'rose-pine-dawn'
+  | 'solarized-light'
   | 'light'
   | 'dark'
 
@@ -30,6 +38,24 @@ export const AVAILABLE_THEMES: ThemeDefinition[] = [
     description: 'Deep obsidian space slate with neon electric cyan and vivid violet accents.'
   },
   {
+    id: 'tokyo-night',
+    name: 'Tokyo Night',
+    category: 'Dark',
+    accentColor: '#7aa2f7',
+    secondaryAccent: '#bb9af7',
+    previewBg: '#1a1b26',
+    description: 'Sleek Tokyo nightscapes with cool indigo slate, neon cyan, electric blue, and purple.'
+  },
+  {
+    id: 'catppuccin-mocha',
+    name: 'Catppuccin Mocha',
+    category: 'Dark',
+    accentColor: '#cba6f7',
+    secondaryAccent: '#89b4fa',
+    previewBg: '#1e1e2e',
+    description: 'Soothing pastel mocha palette with velvety mauve, lavender, peach, and soft teal accents.'
+  },
+  {
     id: 'midnight-sapphire',
     name: 'Midnight Sapphire',
     category: 'Dark',
@@ -48,22 +74,13 @@ export const AVAILABLE_THEMES: ThemeDefinition[] = [
     description: 'Minimalist matte titanium graphite with emerald green and cool steel accents.'
   },
   {
-    id: 'amber-carbon',
-    name: 'Amber Carbon',
+    id: 'monokai-pro',
+    name: 'Monokai Pro',
     category: 'Dark',
-    accentColor: '#f59e0b',
-    secondaryAccent: '#fbbf24',
-    previewBg: '#141416',
-    description: 'Warm carbon charcoal slate with radiant amber gold and brass highlights.'
-  },
-  {
-    id: 'emerald-matrix',
-    name: 'Emerald Matrix',
-    category: 'Dark',
-    accentColor: '#00e676',
-    secondaryAccent: '#10b981',
-    previewBg: '#07100d',
-    description: 'High-contrast cyber matrix dark with vivid fluorescent emerald highlights.'
+    accentColor: '#ffd866',
+    secondaryAccent: '#ff6188',
+    previewBg: '#221f22',
+    description: 'Sleek matte charcoal with vibrant Monokai spectrum yellow, pink, mint, and cyan.'
   },
   {
     id: 'dracula-amethyst',
@@ -75,6 +92,15 @@ export const AVAILABLE_THEMES: ThemeDefinition[] = [
     description: 'Gothic deep amethyst purple night with vibrant orchid magenta and lilac.'
   },
   {
+    id: 'gruvbox-dark',
+    name: 'Gruvbox Dark',
+    category: 'Dark',
+    accentColor: '#fe8019',
+    secondaryAccent: '#fabd2f',
+    previewBg: '#282828',
+    description: 'Warm retro groove with rich earthy charcoal, bright amber orange, forest olive, and gold.'
+  },
+  {
     id: 'nordic-frost',
     name: 'Nordic Frost',
     category: 'Dark',
@@ -84,6 +110,42 @@ export const AVAILABLE_THEMES: ThemeDefinition[] = [
     description: 'Arctic glacial slate with crystalline frosty cyan and polar blue tones.'
   },
   {
+    id: 'solarized-dark',
+    name: 'Solarized Dark',
+    category: 'Dark',
+    accentColor: '#2aa198',
+    secondaryAccent: '#268bd2',
+    previewBg: '#002b36',
+    description: 'Timeless optical-engineered solarized palette with deep cyan-teal and amber highlights.'
+  },
+  {
+    id: 'emerald-matrix',
+    name: 'Emerald Matrix',
+    category: 'Dark',
+    accentColor: '#00e676',
+    secondaryAccent: '#10b981',
+    previewBg: '#07100d',
+    description: 'High-contrast cyber matrix dark with vivid fluorescent emerald highlights.'
+  },
+  {
+    id: 'amber-carbon',
+    name: 'Amber Carbon',
+    category: 'Dark',
+    accentColor: '#f59e0b',
+    secondaryAccent: '#fbbf24',
+    previewBg: '#141416',
+    description: 'Warm carbon charcoal slate with radiant amber gold and brass highlights.'
+  },
+  {
+    id: 'github-dark',
+    name: 'GitHub Dark',
+    category: 'Dark',
+    accentColor: '#58a6ff',
+    secondaryAccent: '#bc8cff',
+    previewBg: '#0d1117',
+    description: 'Crisp GitHub-inspired developer dark slate with vivid blue, green, and coral highlights.'
+  },
+  {
     id: 'light',
     name: 'Clean Light',
     category: 'Light',
@@ -91,6 +153,24 @@ export const AVAILABLE_THEMES: ThemeDefinition[] = [
     secondaryAccent: '#7c3aed',
     previewBg: '#f8fafc',
     description: 'Ultra-crisp high-contrast daylight theme with azure blue accents.'
+  },
+  {
+    id: 'rose-pine-dawn',
+    name: 'Rosé Pine Dawn',
+    category: 'Light',
+    accentColor: '#d7827e',
+    secondaryAccent: '#907aa9',
+    previewBg: '#faf4ed',
+    description: 'Warm, cozy parchment daylight theme with soft rose, pine teal, iris, and gold hues.'
+  },
+  {
+    id: 'solarized-light',
+    name: 'Solarized Light',
+    category: 'Light',
+    accentColor: '#268bd2',
+    secondaryAccent: '#2aa198',
+    previewBg: '#fdf6e3',
+    description: 'Precision-engineered solarized daylight palette with warm ivory paper, azure, and cyan.'
   }
 ]
 

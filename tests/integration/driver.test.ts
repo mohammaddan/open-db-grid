@@ -63,6 +63,39 @@ describe.skipIf(!hasPg)('Query execution + cursor paging', () => {
     await session.closeSession(result.sessionId!)
   }, 20_000)
 
+  it('jumps directly to a specific page number with cursor', async () => {
+    const result = await session.execute('select id, name from users order by id', {
+      pageSize: 50,
+      sessionKey: 'page-jump-test'
+    })
+    expect(result.page?.rows[0].id).toBe(1)
+
+    // Jump to page 4 (offset 150)
+    const page4 = await session.fetchPage('page-jump-test', 50, 4)
+    expect(page4.rows).toHaveLength(50)
+    expect(page4.rows[0].id).toBe(151)
+    expect(page4.rows[49].id).toBe(200)
+    expect(page4.hasMore).toBe(true)
+
+    // Jump back to page 2 (offset 50)
+    const page2 = await session.fetchPage('page-jump-test', 50, 2)
+    expect(page2.rows).toHaveLength(50)
+    expect(page2.rows[0].id).toBe(51)
+    expect(page2.rows[49].id).toBe(100)
+
+    await session.closeSession('page-jump-test')
+  })
+
+  it('browses a table with specific pageNumber and totalRows count', async () => {
+    const page3 = await session.browse({ schema: 'public', table: 'users' }, 25, 3)
+    expect(page3.page?.rows).toHaveLength(25)
+    expect(page3.totalRows).toBe(1200)
+    expect(page3.page?.hasMore).toBe(true)
+    // Page 3 with pageSize 25 starts at offset 50 (id 51)
+    expect(page3.page?.rows[0].id).toBe(51)
+    expect(page3.page?.rows[24].id).toBe(75)
+  })
+
   it('reports rowsAffected for DML', async () => {
     const upd = await session.execute('update users set name = name where id <= 10')
     expect(upd.kind).toBe('DML')

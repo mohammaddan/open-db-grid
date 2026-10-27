@@ -25,6 +25,8 @@ import type {
   PendingEdit,
   SaveEditsResult,
   TableColumnMeta,
+  TableStructureInfo,
+  TableSearchResult,
   BrowseTarget
 } from '@shared/models/explorer'
 import type { TransactionStatus } from '@shared/models/transactions'
@@ -53,8 +55,8 @@ export interface DriverSession {
    */
   execute(sql: string, opts?: { pageSize?: number; sessionKey?: string }): Promise<ExecuteResult>
 
-  /** Fetches the next page from an open cursor session. */
-  fetchPage(sessionId: string, pageSize?: number): Promise<QueryPage>
+  /** Fetches a page from an open cursor session. */
+  fetchPage(sessionId: string, pageSize?: number, pageNumber?: number): Promise<QueryPage>
 
   /** Cancels an in-flight execution (driver-specific: pg_cancel_backend). */
   cancel(sessionId: string): Promise<CancelResult>
@@ -74,8 +76,10 @@ export interface DriverSession {
   // metadata (lazy-loaded and cached inside the driver)
   explore(source: ExploreSource, forceRefresh?: boolean): Promise<ExplorerNode[]>
   tableColumns(schema: string, table: string): Promise<TableColumnMeta[]>
+  tableStructure(schema: string, table: string): Promise<TableStructureInfo>
+  searchTables(query: string): Promise<TableSearchResult[]>
   planForSelect(sql: string, resultColumnNames: string[]): Promise<SafeEditPlan>
-  browse(target: BrowseTarget, pageSize?: number): Promise<ExecuteResult>
+  browse(target: BrowseTarget, pageSize?: number, pageNumber?: number): Promise<ExecuteResult>
 
   // transactions
   txnStatus(): Promise<TransactionStatus>

@@ -38,8 +38,8 @@ const api: RendererApi = {
     execute: (req: ExecuteRequest) => ipcRenderer.invoke(IPC.queryExecute, req),
     executeScript: (req: ExecuteRequest) => ipcRenderer.invoke(IPC.queryExecuteScript, req),
     explain: (req: ExplainRequest) => ipcRenderer.invoke(IPC.queryExplain, req),
-    page: (connectionId: string, sessionId: string, pageSize?: number) =>
-      ipcRenderer.invoke(IPC.queryPage, connectionId, sessionId, pageSize),
+    page: (connectionId: string, sessionId: string, pageSize?: number, pageNumber?: number) =>
+      ipcRenderer.invoke(IPC.queryPage, connectionId, sessionId, pageSize, pageNumber),
     cancel: (connectionId: string, sessionId: string) =>
       ipcRenderer.invoke(IPC.queryCancel, connectionId, sessionId),
     close: (connectionId: string, sessionId: string) =>
@@ -52,8 +52,12 @@ const api: RendererApi = {
     children: (req: ExplorerChildrenRequest) => ipcRenderer.invoke(IPC.explorerChildren, req),
     plan: (connectionId: string, sql: string, columns: string[]) =>
       ipcRenderer.invoke(IPC.explorerPlan, connectionId, sql, columns),
-    browse: (connectionId: string, target: BrowseTarget, pageSize?: number) =>
-      ipcRenderer.invoke(IPC.explorerBrowse, connectionId, target, pageSize)
+    browse: (connectionId: string, target: BrowseTarget, pageSize?: number, pageNumber?: number) =>
+      ipcRenderer.invoke(IPC.explorerBrowse, connectionId, target, pageSize, pageNumber),
+    structure: (connectionId: string, target: BrowseTarget) =>
+      ipcRenderer.invoke(IPC.explorerStructure, connectionId, target),
+    searchTables: (connectionId: string, query: string) =>
+      ipcRenderer.invoke(IPC.explorerSearchTables, connectionId, query)
   },
   txn: {
     status: (connectionId: string) => ipcRenderer.invoke(IPC.txnStatus, connectionId),

@@ -97,12 +97,12 @@ export class QueryService {
     }
   }
 
-  /** Fetches the next page of an open cursor. Requires the original session —
+  /** Fetches the page of an open cursor. Requires the original session —
    * auto-opening a fresh one would lose the cursor, so fail with clear guidance. */
-  async page(connectionId: string, sessionId: string, pageSize?: number): Promise<QueryPage> {
+  async page(connectionId: string, sessionId: string, pageSize?: number, pageNumber?: number): Promise<QueryPage> {
     try {
       const s = this.connections.getSession(connectionId)
-      return await s.fetchPage(sessionId, pageSize)
+      return await s.fetchPage(sessionId, pageSize, pageNumber)
     } catch (err) {
       if (err instanceof DatabaseError && err.info.code === 'EFORGE_NOT_CONNECTED') {
         throw new DatabaseError({

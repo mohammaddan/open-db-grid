@@ -31,6 +31,8 @@ export const IPC = {
   explorerChildren: 'explorer:children',
   explorerPlan: 'explorer:plan',
   explorerBrowse: 'explorer:browse',
+  explorerStructure: 'explorer:structure',
+  explorerSearchTables: 'explorer:search-tables',
   // transactions -----------------------------------------------------------
   txnStatus: 'txn:status',
   txnBegin: 'txn:begin',

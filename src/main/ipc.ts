@@ -87,8 +87,10 @@ export function registerIpc(services: AppServices): void {
   handle(IPC.queryExecute, async (req: ExecuteRequest) => queries.execute(req))
   handle(IPC.queryExecuteScript, async (req: ExecuteRequest) => queries.executeScript(req))
   handle(IPC.queryExplain, async (req: ExplainRequest) => queries.explain(req))
-  handle(IPC.queryPage, async (connectionId: string, sessionId: string, pageSize?: number) =>
-    queries.page(connectionId, sessionId, pageSize)
+  handle(
+    IPC.queryPage,
+    async (connectionId: string, sessionId: string, pageSize?: number, pageNumber?: number) =>
+      queries.page(connectionId, sessionId, pageSize, pageNumber)
   )
   handle(IPC.queryCancel, async (connectionId: string, sessionId: string) =>
     queries.cancel(connectionId, sessionId)
@@ -113,8 +115,17 @@ export function registerIpc(services: AppServices): void {
     async (
       connectionId: string,
       target: { schema: string; table: string },
-      pageSize?: number
-    ) => explorer.browse(connectionId, target, pageSize)
+      pageSize?: number,
+      pageNumber?: number
+    ) => explorer.browse(connectionId, target, pageSize, pageNumber)
+  )
+  handle(
+    IPC.explorerStructure,
+    async (connectionId: string, target: { schema: string; table: string }) =>
+      explorer.structure(connectionId, target)
+  )
+  handle(IPC.explorerSearchTables, async (connectionId: string, query: string) =>
+    explorer.searchTables(connectionId, query)
   )
 
   // -- transactions --------------------------------------------------------

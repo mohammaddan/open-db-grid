@@ -21,9 +21,11 @@ import {
   Link2,
   Shield,
   Zap,
-  FolderTree
+  FolderTree,
+  Search,
+  X
 } from 'lucide-react'
-import type { ExplorerNode } from '@shared/models/explorer'
+import type { ExplorerNode, TableSearchResult } from '@shared/models/explorer'
 import { useExplorerStore } from '@renderer/state/explorer'
 import { useConnectionsStore } from '@renderer/state/connections'
 import { useEditorStore } from '@renderer/state/editor'
@@ -89,9 +91,39 @@ export function ExplorerPanel(): JSX.Element {
   const [databases, setDatabases] = useState<string[]>([])
   const [loadingDbs, setLoadingDbs] = useState(false)
   const [switchingDb, setSwitchingDb] = useState(false)
+  const [tableFilter, setTableFilter] = useState('')
+  const [filteredTables, setFilteredTables] = useState<TableSearchResult[]>([])
+  const [searchingTables, setSearchingTables] = useState(false)
+
+  const openBrowse = useEditorStore((s) => s.openBrowse)
+  const openStructure = useEditorStore((s) => s.openStructure)
 
   const currentConn = connections.find((c) => c.id === activeConnectionId)
   const currentDb = currentConn?.config.database ?? ''
+
+  // Filter tables by name effect
+  useEffect(() => {
+    const q = tableFilter.trim()
+    if (!q || !activeConnectionId) {
+      setFilteredTables([])
+      setSearchingTables(false)
+      return
+    }
+
+    setSearchingTables(true)
+    const timer = setTimeout(async () => {
+      try {
+        const results = await window.api.explorer.searchTables(activeConnectionId, q)
+        setFilteredTables(results)
+      } catch {
+        setFilteredTables([])
+      } finally {
+        setSearchingTables(false)
+      }
+    }, 150)
+
+    return () => clearTimeout(timer)
+  }, [tableFilter, activeConnectionId])
 
   // Auto-select initial connection if none selected
   useEffect(() => {
@@ -235,6 +267,30 @@ export function ExplorerPanel(): JSX.Element {
         </div>
       )}
 
+      {/* Table Filter Search Bar */}
+      {activeConnectionId && (
+        <div className="explorer-filter-bar">
+          <div className="explorer-filter-input-wrap">
+            <Search size={11} className="explorer-filter-icon" />
+            <input
+              className="explorer-filter-input"
+              placeholder="Filter tables by name…"
+              value={tableFilter}
+              onChange={(e) => setTableFilter(e.target.value)}
+            />
+            {tableFilter && (
+              <button
+                className="filter-clear-btn"
+                onClick={() => setTableFilter('')}
+                title="Clear table filter"
+              >
+                <X size={10} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="tree">
         {!activeConnectionId && (
           <div className="tree-empty">
@@ -249,14 +305,65 @@ export function ExplorerPanel(): JSX.Element {
             </button>
           </div>
         )}
+
+        {/* Filtered Tables View */}
+        {activeConnectionId && !failedError && tableFilter.trim() !== '' && (
+          <div className="filtered-tables-list">
+            <div className="filtered-tables-header">
+              <span>Matching Tables</span>
+              <span className="badge">{filteredTables.length}</span>
+            </div>
+            {searchingTables ? (
+              <div className="tree-empty">
+                <Loader2 size={12} className="spin" /> Searching tables…
+              </div>
+            ) : filteredTables.length === 0 ? (
+              <div className="tree-empty">No tables match &quot;{tableFilter}&quot;</div>
+            ) : (
+              filteredTables.map((t) => (
+                <div
+                  key={`${t.schema}:${t.name}`}
+                  className="filtered-table-row"
+                  title={t.comment ? `${t.schema}.${t.name} — ${t.comment}` : `${t.schema}.${t.name}`}
+                  onDoubleClick={() => void openBrowse(activeConnectionId, { schema: t.schema, table: t.name })}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    open(e, [
+                      {
+                        label: 'Browse Data',
+                        action: () => void openBrowse(activeConnectionId, { schema: t.schema, table: t.name })
+                      },
+                      {
+                        label: 'View Structure',
+                        action: () => void openStructure(activeConnectionId, { schema: t.schema, table: t.name })
+                      },
+                      {
+                        label: 'Copy Name',
+                        action: () => void navigator.clipboard.writeText(t.name)
+                      }
+                    ])
+                  }}
+                >
+                  <Table size={12} className="filtered-table-icon" />
+                  <span className="filtered-table-name">{t.name}</span>
+                  <span className="schema-pill">{t.schema}</span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* Standard Tree View (when not filtering by table name) */}
         {activeConnectionId &&
           !failedError &&
+          tableFilter.trim() === '' &&
           (rootChildren ?? [])
             .filter((node) => node.kind !== 'databases' && node.key !== 'databases')
             .map((node) => (
               <ExplorerNodeRow key={node.key} node={node} depth={0} onMenu={open} />
             ))}
-        {activeConnectionId && !failedError && rootChildren === undefined && (
+        {activeConnectionId && !failedError && tableFilter.trim() === '' && rootChildren === undefined && (
           <div className="tree-empty">
             <Loader2 size={12} className="spin" /> loading metadata…
           </div>
@@ -278,20 +385,35 @@ function ExplorerNodeRow(props: {
   const toggle = useExplorerStore((s) => s.toggle)
   const loadChildren = useExplorerStore((s) => s.loadChildren)
   const openBrowse = useEditorStore((s) => s.openBrowse)
+  const openStructure = useEditorStore((s) => s.openStructure)
   const children = useExplorerStore((s) => s.childrenByKey[connId + ':' + node.key])
   const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
 
   const browseable = ['table', 'view', 'matview'].includes(node.kind)
 
+  function resolveTarget(): { schema: string; table: string } {
+    if (node.meta?.schema && node.meta?.table) {
+      return { schema: String(node.meta.schema), table: String(node.meta.table) }
+    }
+    const parts = node.key.split(':')
+    return { schema: parts[1] ?? 'public', table: parts[2] ?? node.name }
+  }
+
   function buildMenu(): ContextMenuItem[] {
+    const target = resolveTarget()
     return [
       ...(browseable
         ? [
             {
               label: 'Browse Data',
               action: () => {
-                const [, schema, table] = node.key.split(':')
-                void openBrowse(connId, { schema, table })
+                void openBrowse(connId, target)
+              }
+            },
+            {
+              label: 'View Structure',
+              action: () => {
+                void openStructure(connId, target)
               }
             }
           ]
@@ -313,8 +435,7 @@ function ExplorerNodeRow(props: {
         onClick={() => node.hasChildren && connId && void toggle(connId, node)}
         onDoubleClick={() => {
           if (browseable && connId) {
-            const [, schema, table] = node.key.split(':')
-            void openBrowse(connId, { schema, table })
+            void openBrowse(connId, resolveTarget())
           }
         }}
         onContextMenu={(e) => {

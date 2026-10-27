@@ -13,8 +13,21 @@ import {
   type CellMouseArgs
 } from 'react-data-grid'
 import 'react-data-grid/lib/styles.css'
-import { Check, X, Search, Download, Copy, RefreshCw } from 'lucide-react'
-import type { EditorTab } from '@renderer/state/editor'
+import {
+  Check,
+  X,
+  Search,
+  Download,
+  Copy,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Loader2
+} from 'lucide-react'
+import { useEditorStore, type EditorTab } from '@renderer/state/editor'
+import { useUiStore } from '@renderer/state/ui'
 import type { PendingEdit, QueryColumn } from '@shared/models/explorer'
 import type { ResultRow } from '@shared/models/result'
 import {
@@ -64,9 +77,67 @@ export function ResultTable(props: Props): JSX.Element {
   const [selectedRows, setSelectedRows] = useState<ReadonlySet<number>>(new Set())
   const [lastCell, setLastCell] = useState<{ row: ResultRow; key: string } | null>(null)
   const [viewer, setViewer] = useState<ValueViewer | null>(null)
+  const [jumpInput, setJumpInput] = useState('')
+
+  const goToPage = useEditorStore((s) => s.goToPage)
+  const changePageSize = useEditorStore((s) => s.changePageSize)
 
   const page = tab.result?.page ?? null
   const resultColumns: QueryColumn[] = page?.columns ?? tab.result?.columns ?? []
+
+  const pageNumber = tab.pageNumber ?? 1
+  const pageSize = tab.pageSize ?? 500
+  const totalRows = tab.result?.totalRows ?? page?.totalRows
+  const totalPages = totalRows !== undefined ? Math.max(1, Math.ceil(totalRows / pageSize)) : undefined
+  const hasMore = tab.hasMore || (totalPages !== undefined && pageNumber < totalPages)
+  const canGoPrev = pageNumber > 1 && !tab.running
+  const canGoNext = hasMore && !tab.running
+  const showPagination = (totalRows !== undefined && totalRows > pageSize) || tab.hasMore || pageNumber > 1
+
+  const handlePageChange = (targetPage: number) => {
+    if (tab.pending.length > 0) {
+      useUiStore.getState().requestConfirm({
+        title: 'Unsaved Changes',
+        message: `You have ${tab.pending.length} pending change(s) on this page. Leaving this page will discard them.`,
+        confirmLabel: 'Discard & Change Page',
+        danger: true,
+        onConfirm: () => {
+          props.onDiscardEdits()
+          void goToPage(tab.id, targetPage, pageSize)
+        }
+      })
+      return
+    }
+    void goToPage(tab.id, targetPage, pageSize)
+  }
+
+  const handleJumpSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    const p = parseInt(jumpInput, 10)
+    if (Number.isFinite(p) && p >= 1) {
+      const target = totalPages !== undefined ? Math.min(p, totalPages) : p
+      handlePageChange(target)
+      setJumpInput('')
+    }
+  }
+
+  const handleSizeChange = (newSize: number) => {
+    if (newSize === pageSize) return
+    if (tab.pending.length > 0) {
+      useUiStore.getState().requestConfirm({
+        title: 'Unsaved Changes',
+        message: `You have ${tab.pending.length} pending change(s) on this page. Changing page size will discard them.`,
+        confirmLabel: 'Discard & Change',
+        danger: true,
+        onConfirm: () => {
+          props.onDiscardEdits()
+          void changePageSize(tab.id, newSize)
+        }
+      })
+      return
+    }
+    void changePageSize(tab.id, newSize)
+  }
 
   const orderedColumns = useMemo(() => {
     const names = resultColumns.map((c) => c.name)
@@ -270,7 +341,6 @@ export function ResultTable(props: Props): JSX.Element {
   // -- render -----------------------------------------------------------------
 
   const fetched = page?.fetched ?? 0
-  const totalRows = tab.result?.totalRows ?? page?.totalRows
   const duration = tab.result?.durationMs ?? 0
   const rowsText =
     totalRows !== undefined && tab.hasMore && fetched < totalRows
@@ -417,6 +487,158 @@ export function ResultTable(props: Props): JSX.Element {
         />
       ) : (
         <div className="result-empty">No results — run a query to display rows here.</div>
+      )}
+
+      {/* Modern Obsidian Cyber Pagination Dock */}
+      {page && (
+        <div className="grid-pagination-bar">
+          <div className="pagination-info">
+            <span className="pagination-range">
+              {totalRows !== undefined ? (
+                <>
+                  Showing{' '}
+                  <span className="hl">
+                    {Math.min((pageNumber - 1) * pageSize + 1, totalRows).toLocaleString()}–
+                    {Math.min(pageNumber * pageSize, totalRows).toLocaleString()}
+                  </span>{' '}
+                  of <span className="hl">{totalRows.toLocaleString()}</span> rows
+                </>
+              ) : (
+                <>
+                  Showing{' '}
+                  <span className="hl">
+                    {((pageNumber - 1) * pageSize + 1).toLocaleString()}–
+                    {((pageNumber - 1) * pageSize + page.rows.length).toLocaleString()}
+                  </span>{' '}
+                  rows
+                </>
+              )}
+            </span>
+            <span className="pagination-dot">•</span>
+            <span className="pagination-duration">{duration} ms</span>
+          </div>
+
+          <div className="spacer" />
+
+          {/* Navigation controls if table has more rows or multi-page */}
+          {showPagination ? (
+            <div className="pagination-controls">
+              <div className="pagination-nav-strip">
+                <button
+                  className="page-btn"
+                  title="First page"
+                  disabled={!canGoPrev}
+                  onClick={() => handlePageChange(1)}
+                >
+                  <ChevronsLeft size={13} />
+                </button>
+                <button
+                  className="page-btn"
+                  title="Previous page"
+                  disabled={!canGoPrev}
+                  onClick={() => handlePageChange(pageNumber - 1)}
+                >
+                  <ChevronLeft size={13} />
+                </button>
+
+                <div className="page-indicator">
+                  <span className="page-label">Page</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={totalPages ?? 999999}
+                    className="page-num-input"
+                    value={pageNumber}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10)
+                      if (Number.isFinite(val) && val >= 1) {
+                        handlePageChange(val)
+                      }
+                    }}
+                  />
+                  <span className="page-total">
+                    of {totalPages !== undefined ? totalPages.toLocaleString() : '?'}
+                  </span>
+                </div>
+
+                <button
+                  className="page-btn"
+                  title="Next page"
+                  disabled={!canGoNext}
+                  onClick={() => handlePageChange(pageNumber + 1)}
+                >
+                  <ChevronRight size={13} />
+                </button>
+                {totalPages !== undefined && (
+                  <button
+                    className="page-btn"
+                    title="Last page"
+                    disabled={pageNumber >= totalPages || tab.running}
+                    onClick={() => handlePageChange(totalPages)}
+                  >
+                    <ChevronsRight size={13} />
+                  </button>
+                )}
+              </div>
+
+              <div className="pagination-sep" />
+
+              <form onSubmit={handleJumpSubmit} className="pagination-jump-form">
+                <span className="jump-label">Go to</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={totalPages ?? 999999}
+                  className="jump-input"
+                  placeholder="#"
+                  value={jumpInput}
+                  onChange={(e) => setJumpInput(e.target.value)}
+                />
+                <button
+                  type="submit"
+                  className="jump-btn"
+                  disabled={!jumpInput || tab.running}
+                  title="Go to specific page"
+                >
+                  Go
+                </button>
+              </form>
+
+              <div className="pagination-sep" />
+
+              <select
+                className="pagination-size-select"
+                value={pageSize}
+                onChange={(e) => handleSizeChange(Number(e.target.value))}
+                title="Rows per page"
+              >
+                <option value={50}>50 / page</option>
+                <option value={100}>100 / page</option>
+                <option value={250}>250 / page</option>
+                <option value={500}>500 / page</option>
+                <option value={1000}>1,000 / page</option>
+              </select>
+
+              {tab.running && <Loader2 size={12} className="spin pagination-spinner" />}
+            </div>
+          ) : (
+            <div className="pagination-controls single">
+              <span className="pagination-single-label">All rows loaded (Page 1 of 1)</span>
+              <select
+                className="pagination-size-select"
+                value={pageSize}
+                onChange={(e) => handleSizeChange(Number(e.target.value))}
+                title="Rows per page"
+              >
+                <option value={50}>50 / page</option>
+                <option value={100}>100 / page</option>
+                <option value={250}>250 / page</option>
+                <option value={500}>500 / page</option>
+                <option value={1000}>1,000 / page</option>
+              </select>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Concept 1 Obsidian Cyber Pending Changes Dock */}

@@ -27,7 +27,8 @@ import type {
   ExportResult,
   QueryColumn,
   QueryErrorInfo,
-  QueryPage
+  QueryPage,
+  ResultRow
 } from '@shared/models/result'
 import type {
   BrowseTarget,
@@ -36,14 +37,22 @@ import type {
   PendingEdit,
   SafeEditPlan,
   SaveEditsResult,
-  TableColumnMeta
+  TableColumnMeta,
+  TableStructureInfo,
+  TableSearchResult
 } from '@shared/models/explorer'
 import type { TransactionStatus } from '@shared/models/transactions'
 import { DatabaseError, toQueryErrorInfo } from './errors'
 import { createSshTunnel } from './ssh'
 import { classifyStatement } from '@shared/sql/classifier'
 import { planSafeEdit, buildParameterizedUpdate } from '@shared/sql/editplanner'
-import { explorePostgres, columnsForTable, resolveVisibleSchema } from './metadata'
+import {
+  explorePostgres,
+  columnsForTable,
+  resolveVisibleSchema,
+  getTableStructure,
+  searchTables
+} from './metadata'
 import { streamExport } from './postgresExport'
 import { buildPgSsl, mapResultKind } from './postgresHelpers'
 import type { DriverSession } from './DatabaseDriver'
@@ -407,7 +416,7 @@ export class PostgresDriverSession implements DriverSession {
     this.inFlight.set(sessionId, { client, pid })
     try {
       if (!this.txnClient) await client.query('BEGIN READ ONLY')
-      await client.query(`DECLARE "${cursorName}" NO SCROLL CURSOR FOR ${sql}`)
+      await client.query(`DECLARE "${cursorName}" SCROLL CURSOR FOR ${sql}`)
       const fetched = await this.fetchRows(client, cursorName, pageSize)
       const columns = this.columnsFromRes(fetched)
 
@@ -451,31 +460,76 @@ export class PostgresDriverSession implements DriverSession {
     }
   }
 
-  async fetchPage(sessionId: string, pageSize?: number): Promise<QueryPage> {
+  async fetchPage(sessionId: string, pageSize?: number, pageNumber?: number): Promise<QueryPage> {
     const session = this.cursors.get(sessionId)
+    const n = Math.min(pageSize ?? DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE)
     if (!session || session.closed) {
+      const closed = this.closedSessions.get(sessionId)
+      if (closed && pageNumber !== undefined) {
+        const offset = (pageNumber - 1) * n
+        const client = this.txnClient ?? (await this.pool.connect())
+        try {
+          const res = await client.query(
+            `SELECT * FROM (${closed.sql.trim().replace(/;+\s*$/, '')}) AS _paged_sub LIMIT ${n} OFFSET ${offset}`
+          )
+          const rows = res.rows.map((r, i) => ({
+            __rowId: offset + i + 1,
+            ...(r as Record<string, unknown>)
+          }))
+          return {
+            columns: closed.columns,
+            rows,
+            hasMore: rows.length === n,
+            fetched: rows.length
+          }
+        } finally {
+          if (!this.txnClient) client.release()
+        }
+      }
       throw new DatabaseError({
         message: 'Result set expired — run the query again to continue browsing.',
         code: 'EFORGE_SESSION_GONE'
       })
     }
-    const n = Math.min(pageSize ?? DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE)
     const pid = await this.backendPid(session.client)
     this.inFlight.set(sessionId, { client: session.client, pid })
     try {
-      const res = await this.fetchRows(session.client, session.cursorName, n)
-      const rows = res.rows.map((r, i) => ({
-        __rowId: session.fetched + i + 1,
-        ...(r as Record<string, unknown>)
-      }))
-      session.fetched += rows.length
+      let rows: ResultRow[]
+      let offset: number
+      if (pageNumber !== undefined) {
+        offset = (pageNumber - 1) * n
+        await session.client.query(`MOVE ABSOLUTE ${offset} FROM "${session.cursorName}"`)
+        const res = await this.fetchRows(session.client, session.cursorName, n)
+        rows = res.rows.map((r, i) => ({
+          __rowId: offset + i + 1,
+          ...(r as Record<string, unknown>)
+        }))
+        session.fetched = offset + rows.length
+      } else {
+        offset = session.fetched
+        const res = await this.fetchRows(session.client, session.cursorName, n)
+        rows = res.rows.map((r, i) => ({
+          __rowId: session.fetched + i + 1,
+          ...(r as Record<string, unknown>)
+        }))
+        session.fetched += rows.length
+      }
       session.lastAccessAt = Date.now()
-      const hasMore = rows.length === n
-      if (!hasMore) {
+      const hasMore =
+        session.totalRows !== undefined
+          ? offset + rows.length < session.totalRows
+          : rows.length === n
+      if (!hasMore && pageNumber === undefined) {
         this.closedSessions.set(sessionId, { sql: session.sql, columns: session.columns })
         void this.closeSession(sessionId)
       }
-      return { columns: session.columns, rows, hasMore, fetched: session.fetched, totalRows: session.totalRows }
+      return {
+        columns: session.columns,
+        rows,
+        hasMore,
+        fetched: session.fetched,
+        totalRows: session.totalRows
+      }
     } catch (err) {
       throw toQueryErrorInfo(err)
     } finally {
@@ -707,11 +761,50 @@ async tableColumns(schema: string, table: string): Promise<TableColumnMeta[]> {
     })
   }
 
-  async browse(target: BrowseTarget, pageSize?: number): Promise<ExecuteResult> {
+  async tableStructure(schema: string, table: string): Promise<TableStructureInfo> {
+    const client = this.txnClient ?? (await this.pool.connect())
+    try {
+      return await getTableStructure(client, schema, table)
+    } catch (err) {
+      throw toQueryErrorInfo(err)
+    } finally {
+      if (!this.txnClient) client.release()
+    }
+  }
+
+  async searchTables(query: string): Promise<TableSearchResult[]> {
+    const client = this.txnClient ?? (await this.pool.connect())
+    try {
+      return await searchTables(client, query)
+    } catch (err) {
+      throw toQueryErrorInfo(err)
+    } finally {
+      if (!this.txnClient) client.release()
+    }
+  }
+
+  async browse(target: BrowseTarget, pageSize?: number, pageNumber?: number): Promise<ExecuteResult> {
+    const size = Math.min(pageSize ?? DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE)
+    const page = Math.max(1, pageNumber ?? 1)
+    const offset = (page - 1) * size
     const schema = target.schema.replace(/"/g, '""')
-    const table = target.table.replace(/"/g, '""')
-    const sql = `SELECT * FROM "${schema}"."${table}"`
-    return this.execute(sql, { pageSize })
+    const table = (target.table ?? (target as unknown as { name?: string }).name ?? '').replace(/"/g, '""')
+    const baseSql = `SELECT * FROM "${schema}"."${table}"`
+    const sql = `SELECT * FROM "${schema}"."${table}" LIMIT ${size} OFFSET ${offset}`
+    const result = await this.execute(sql, { pageSize: size })
+    result.totalRows = await this.countQueryRows(baseSql)
+    if (result.page) {
+      result.page.rows = result.page.rows.map((r, i) => ({
+        ...r,
+        __rowId: offset + i + 1
+      }))
+      result.page.totalRows = result.totalRows
+      result.page.hasMore =
+        result.totalRows !== undefined
+          ? offset + result.page.rows.length < result.totalRows
+          : result.page.hasMore
+    }
+    return result
   }
 
   // -------------------------------------------------------------------------

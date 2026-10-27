@@ -84,4 +84,39 @@ describe.skipIf(!hasPg)('Explorer tree', () => {
     const second = await session.explore({ kind: 'schemas' }, true)
     expect(second.map((s) => s.name)).toEqual(first.map((s) => s.name))
   })
+
+  it('lists table sections when expanding a table node', async () => {
+    const sections = await session.explore({ kind: 'table-sections', schema: 'public', table: 'users' })
+    const kinds = sections.map((s) => s.kind)
+    expect(kinds).toContain('columns')
+    expect(kinds).toContain('indexes')
+    expect(kinds).toContain('foreign-keys')
+    expect(kinds).toContain('constraints')
+    expect(kinds).toContain('triggers')
+  })
+
+  it('fetches full table structure with columns, indexes, constraints, and DDL', async () => {
+    const structure = await session.tableStructure('public', 'users')
+    expect(structure.schema).toBe('public')
+    expect(structure.table).toBe('users')
+    expect(structure.columns.length).toBeGreaterThanOrEqual(3)
+    const idCol = structure.columns.find((c) => c.name === 'id')
+    expect(idCol?.isPk).toBe(true)
+
+    expect(structure.indexes.length).toBeGreaterThanOrEqual(1)
+    const pkIdx = structure.indexes.find((i) => i.isPrimary)
+    expect(pkIdx).toBeDefined()
+    expect(pkIdx?.name).toBe('users_pkey')
+
+    expect(structure.ddl).toContain('CREATE TABLE')
+    expect(structure.ddl).toContain('users')
+  })
+
+  it('searches tables and views matching pattern', async () => {
+    const matches = await session.searchTables('user')
+    const names = matches.map((m) => m.name)
+    expect(names).toContain('users')
+    expect(names).toContain('mv_user_stats')
+    expect(names).toContain('v_users')
+  })
 })
